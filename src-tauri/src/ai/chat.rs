@@ -79,6 +79,8 @@ pub fn send(db: &SharedDb, model: &dyn ChatModel, book_id: &str, scene_id: Optio
         ai::message_add(c, &cv.id, "user", text, None, now())?;
         Ok(cv.id)
     })?;
+    // só depois de a pergunta estar salva: dobra mensagens antigas no resumo (falha não impede a resposta)
+    let _ = fold_if_needed(db, model, book_id, now);
     answer(db, model, book_id, scene_id, &conv_id, emit, now)
 }
 
@@ -293,6 +295,27 @@ mod tests {
         drop(g);
         fold_if_needed(&db, &m, &b.id, &now).unwrap();
         assert_eq!(m.n_calls(), 1);
+    }
+
+    #[test]
+    fn send_saves_question_then_folds_then_answers() {
+        let (_d, db, b) = setup("conselheira");
+        {
+            let g = db.lock().unwrap();
+            let c = g.as_ref().unwrap();
+            let cv = ai::conversation_current(c, &b.id, 0).unwrap();
+            for i in 0..30 {
+                ai::message_add(c, &cv.id, if i % 2 == 0 { "user" } else { "assistant" }, &format!("m{i}"), None, i).unwrap();
+            }
+        }
+        // o resumo falha (rede): a pergunta já tem que estar salva e a resposta segue
+        let m = FakeModel::new(vec![Err(ProviderError::Network("x".into())), text_turn("ok")]);
+        send(&db, &m, &b.id, None, "pergunta nova", &mut |_| {}, &now).unwrap();
+        let calls = m.calls.lock().unwrap();
+        assert_eq!(calls[0].0, DEFAULT_BACKGROUND_MODEL);
+        assert_eq!(calls[1].0, DEFAULT_CHAT_MODEL);
+        let all = msgs(&db, &b.id);
+        assert_eq!(all[all.len() - 2], ("user".into(), "pergunta nova".into()));
     }
 
     #[test]

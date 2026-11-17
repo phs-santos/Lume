@@ -64,11 +64,13 @@ async function saveKey() {
 /** Recebe os eventos de uma resposta; a bolha da IA só é criada quando chega o primeiro pedaço. */
 function handler() {
   let bubbleId: string | null = null;
+  const mine: string[] = []; // bolhas criadas nesta resposta
   const bubble = () => items.value.find((i) => i.id === bubbleId) as { text: string } | undefined;
   return (e: ChatEvent) => {
     if (e.type === "delta") {
       if (!bubble()) {
         bubbleId = tmpId();
+        mine.push(bubbleId);
         items.value.push({ kind: "assistant", id: bubbleId, text: "" });
       }
       bubble()!.text += e.text;
@@ -77,9 +79,15 @@ function handler() {
       bubbleId = null; // texto depois da consulta vai numa bolha nova
     } else if (e.type === "proposal") {
       if (props.mode === "coautora") items.value.push({ kind: "proposal", id: e.proposal.id, proposal: e.proposal });
+    } else if (e.type === "done") {
+      // as bolhas desta resposta já estão salvas: não são mais "provisórias"
+      const created = new Set(mine);
+      items.value = items.value.map((i) => (created.has(i.id) ? { ...i, id: `${e.message_id}-${i.id}` } : i));
+      mine.length = 0;
     } else if (e.type === "error") {
-      // descarta a resposta pela metade: a pergunta continua salva
-      items.value = items.value.filter((i) => !(i.kind === "assistant" && i.id.startsWith("tmp-")));
+      // descarta só a resposta pela metade desta chamada; a pergunta continua salva
+      const created = new Set(mine);
+      items.value = items.value.filter((i) => !(i.kind === "assistant" && created.has(i.id)));
       error.value = e.message;
     }
     void scrollDown();

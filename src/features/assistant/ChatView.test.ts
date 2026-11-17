@@ -113,6 +113,26 @@ describe("ChatView", () => {
     expect(el.textContent).not.toContain("Sem conexão");
   });
 
+  it("um erro não apaga respostas anteriores da sessão", async () => {
+    let n = 0;
+    vi.mocked(api.aiSend).mockImplementation(async (_b, _s, _t, on: (e: ChatEvent) => void) => {
+      n++;
+      if (n <= 2) {
+        on({ type: "delta", text: `resposta ${n}` });
+        on({ type: "done", message_id: `m${n}` });
+      } else {
+        on({ type: "delta", text: "meio" });
+        on({ type: "error", message: "Sem conexão" });
+        throw "Sem conexão";
+      }
+    });
+    const el = await mount();
+    await type(el, "p1");
+    await type(el, "p2");
+    await type(el, "p3");
+    expect(bubbles(el)).toEqual(["oi", "olá", "p1", "resposta 1", "p2", "resposta 2", "p3"]);
+  });
+
   it("sem chave pede a chave", async () => {
     vi.mocked(api.aiKeyStatus).mockResolvedValueOnce(false);
     const el = await mount();

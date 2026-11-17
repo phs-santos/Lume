@@ -375,6 +375,7 @@ pub async fn ai_send(state: State<'_, AppState>, book_id: String, scene_id: Opti
         };
         let model = match inworld(&db) {
             Ok(m) => m,
+            Err(message) if text.trim().is_empty() => return Err(message),
             Err(message) => {
                 // grava a pergunta mesmo assim, para não se perder
                 let _ = with_db_shared(&db, |c| {
@@ -385,7 +386,6 @@ pub async fn ai_send(state: State<'_, AppState>, book_id: String, scene_id: Opti
                 return Err(message);
             }
         };
-        let _ = chat::fold_if_needed(&db, &model, &book_id, &now_ms);
         chat::send(&db, &model, &book_id, scene_id.as_deref(), &text, &mut emit, &now_ms)
     })
     .await
@@ -431,17 +431,24 @@ static DIGESTING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new
 pub fn ai_scene_touched(state: State<AppState>, scene_id: String) {
     let db = state.db.clone();
     {
-        let mut d = DIGESTING.lock().unwrap();
+        let mut d = DIGESTING.lock().unwrap_or_else(|e| e.into_inner());
         if d.contains(&scene_id) {
             return;
         }
         d.push(scene_id.clone());
     }
     std::thread::spawn(move || {
+        // tira a cena da lista mesmo se algo der pânico no meio
+        struct Done(String);
+        impl Drop for Done {
+            fn drop(&mut self) {
+                DIGESTING.lock().unwrap_or_else(|e| e.into_inner()).retain(|x| x != &self.0);
+            }
+        }
+        let _done = Done(scene_id.clone());
         if let Some(model) = ai_ready_for_scene(&db, &scene_id) {
             let _ = background::digest_scene(&db, &model, &scene_id, &now_ms);
         }
-        DIGESTING.lock().unwrap().retain(|x| x != &scene_id);
     });
 }
 

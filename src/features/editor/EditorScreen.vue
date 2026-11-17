@@ -215,6 +215,8 @@ async function insertProposal(p: Proposal) {
       await nextTick();
       await new Promise((r) => setTimeout(r, 50)); // o editor da cena nova precisa existir
     }
+    // se a troca de cena não aconteceu (ex.: falha ao salvar), não insere na cena errada
+    if (p.scene_id && scene.value?.id !== p.scene_id) throw new Error("Não consegui abrir a cena da proposta.");
     if (!typewriter.value?.insertAtEnd(p.text)) throw new Error("Abra uma cena para inserir o trecho.");
     await proposalSetStatus(p.id, "inserida");
   } catch (e) {

@@ -173,3 +173,21 @@ banco local cifrado de cada pessoa. Cada pessoa escolhe seu provedor.
 - **Exportação .docx/.md** já na v1: ela precisa conseguir tirar o livro do programa.
 - **Bíblia viva fica para a v2**, para a v1 sair mais cedo.
 - **Tauri + Vue 3**: um único código para macOS e Windows, app leve.
+
+## 11. Plano 2 — detalhes aprovados (2026-11-17)
+
+**Hospedagem (VPS existente, Ubuntu 24.04):**
+- Endereço: `https://lume.codexolimpo.com` (DNS curinga já aponta para a VPS).
+- Contêiner Docker `lume` em `127.0.0.1:3020`, código em `/root/lume`, subido com `docker compose`.
+- Caddy: novo arquivo `/etc/caddy/sites/lume.caddy` com `reverse_proxy 127.0.0.1:3020` (o Caddy já importa `sites/*.caddy` e emite HTTPS).
+- Banco: SQLite num volume do contêiner (isolado do Postgres existente).
+- Nenhuma mudança na VPS sem avisar o usuário antes.
+
+**Decisões de construção (chamadas do implementador, aprovadas junto):**
+- Servidor: Node 24 + TypeScript + Hono + `node:sqlite`; testes com Vitest.
+- Página de captura: Vue 3 + Vite, servida pelo mesmo servidor em `/`; API em `/api`.
+- Mesma senha do cofre do desktop. O cliente deriva `segredo_de_login = Argon2id(senha, sal_da_conta)` (m=64 MiB, t=3, p=1, 32 bytes); o servidor guarda só `SHA-256(segredo_de_login)`.
+- Cadastro exige um código de convite (`INVITE_CODE`, variável de ambiente), para que só vocês dois criem contas.
+- Par de chaves X25519 gerado no desktop; a chave privada fica só no banco cifrado do desktop; o servidor guarda só a pública. O celular cifra com `crypto_box_seal` (libsodium). Backup da chave privada no servidor fica para o plano 4.
+- A caixa de entrada guarda envelopes até o desktop confirmar o recebimento; depois apaga.
+- No desktop, o plano 2 entrega: conectar a conta, receber e decifrar, ouvir áudio, ler texto, transformar ideia de texto em cena, arquivar e apagar. Transcrição e "anexar à cena" ficam para o plano 3 (IA).

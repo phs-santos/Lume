@@ -171,7 +171,7 @@ export function installMockBackend() {
   mockWindows("main");
   if (location.search.includes("demo")) {
     status = "unlocked";
-    const b = handlers.book_create({ title: "Até ter certeza", aiMode: "coautora" });
+    const b = handlers.book_create({ title: "Até ter certeza", aiMode: location.search.includes("conselheira") ? "conselheira" : "coautora" });
     db.chapters = []; db.scenes = [];
     ["Lugar de Sempre", "Linha 340", "A Porta do Elevador"].forEach((t) => {
       const ch = handlers.chapter_create({ bookId: b.id, title: t });

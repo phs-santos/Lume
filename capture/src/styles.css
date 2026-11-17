@@ -1,0 +1,29 @@
+@import "@fontsource/courier-prime/400.css";
+@import "@fontsource/literata/400-italic.css";
+
+:root {
+  --paper: #f6f7f9; --ink: #1c2333; --ribbon: #b42318; --note: #646b78; --rule: #cfd4db; --platen: #25272c;
+  --font-mono: "Courier Prime", "Courier New", monospace;
+  --font-serif: "Literata", Georgia, serif;
+  --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body, #app { height: 100%; margin: 0; }
+body { background: #1b2340; color: var(--ink); font: 16px/1.5 var(--font-ui); -webkit-font-smoothing: antialiased; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--ribbon); outline-offset: 2px; }
+.field { display: block; margin-bottom: 1rem; }
+.field span { display: block; font-size: 0.85rem; color: var(--note); margin-bottom: 0.3rem; }
+.field input, .field textarea {
+  width: 100%; padding: 0.75rem 0.9rem; border: 1px solid var(--rule); border-radius: 10px; background: #fff; font-size: 1rem;
+}
+.field textarea { min-height: 6.5rem; resize: none; font-family: var(--font-serif); }
+.field input:focus, .field textarea:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.15); }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; min-height: 3rem;
+  border: 0; border-radius: 10px; background: var(--ink); color: #fff; font-weight: 500; cursor: pointer;
+}
+.btn:disabled { opacity: 0.4; }
+.link { background: none; border: 0; color: var(--note); padding: 0.5rem 0.75rem; border-radius: 8px; cursor: pointer; }
+.error { color: var(--ribbon); margin: 0 0 0.75rem; font-size: 0.9rem; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
+import Capture from "./screens/Capture.vue";
+import Login from "./screens/Login.vue";
+import { loadSession, session } from "./session";
+
+loadSession();
 </script>
 
 <template>
-  <HelloWorld />
+  <Capture v-if="session.token && session.publicKey" />
+  <Login v-else />
 </template>

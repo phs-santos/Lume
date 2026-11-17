@@ -29,3 +29,58 @@ pub fn sample(c: &Connection, mode: &str) -> Book {
     scenes::scene_save(c, &s3.id, &doc(&["A padaria da esquina abre às seis."]), 7, 1).unwrap();
     Book { id: b.id, chapter: ch, scenes: vec![first, s2.id, s3.id] }
 }
+
+use crate::ai::provider::{ChatModel, Msg, ProviderError, ToolCall, ToolDef, Turn, Usage};
+use std::sync::Mutex;
+
+/// Modelo falso: devolve respostas roteirizadas e registra cada chamada.
+pub struct FakeModel {
+    pub script: Mutex<Vec<Result<Turn, ProviderError>>>,
+    /// (modelo, nº de mensagens, nº de ferramentas oferecidas, último conteúdo)
+    pub calls: Mutex<Vec<(String, usize, usize, String)>>,
+    /// Quando o roteiro acaba: pede sempre uma ferramenta (se houver) ou responde "fim".
+    pub always_tool: bool,
+}
+
+impl FakeModel {
+    pub fn new(script: Vec<Result<Turn, ProviderError>>) -> Self {
+        Self { script: Mutex::new(script.into_iter().rev().collect()), calls: Mutex::new(vec![]), always_tool: false }
+    }
+    pub fn n_calls(&self) -> usize {
+        self.calls.lock().unwrap().len()
+    }
+}
+
+pub fn text_turn(t: &str) -> Result<Turn, ProviderError> {
+    Ok(Turn { text: t.into(), tool_calls: vec![], usage: Usage { input_tokens: 10, output_tokens: 2, cost: None } })
+}
+
+pub fn tool_turn(name: &str, args: serde_json::Value) -> Result<Turn, ProviderError> {
+    Ok(Turn {
+        text: String::new(),
+        tool_calls: vec![ToolCall { id: format!("c-{name}"), name: name.into(), arguments_json: args.to_string() }],
+        usage: Usage { input_tokens: 10, output_tokens: 2, cost: None },
+    })
+}
+
+impl ChatModel for FakeModel {
+    fn complete(&self, model: &str, msgs: &[Msg], tools: &[ToolDef], on_delta: &mut dyn FnMut(&str)) -> Result<Turn, ProviderError> {
+        self.calls.lock().unwrap().push((model.into(), msgs.len(), tools.len(), msgs.last().map(|m| m.content.clone()).unwrap_or_default()));
+        let next = self.script.lock().unwrap().pop();
+        let r = match next {
+            Some(r) => r,
+            None if self.always_tool && !tools.is_empty() => tool_turn("buscar_no_livro", serde_json::json!({"texto":"Rafa"})),
+            None => text_turn("fim"),
+        };
+        if let Ok(t) = &r {
+            for w in t.text.split_inclusive(' ') {
+                on_delta(w);
+            }
+        }
+        r
+    }
+}
+
+pub fn shared(c: Connection) -> crate::state::SharedDb {
+    std::sync::Arc::new(std::sync::Mutex::new(Some(c)))
+}

@@ -92,10 +92,6 @@ fn search(c: &Connection, book_id: &str, query: &str) -> Result<String, crate::d
     Ok(if hits.is_empty() { format!("Nada encontrado para \"{query}\".") } else { hits.join("\n") })
 }
 
-fn scene_title(c: &Connection, id: &str) -> String {
-    scenes::scene_get(c, id).map(|s| s.title).unwrap_or_else(|_| id.to_string())
-}
-
 /// Executa uma chamada de ferramenta. Erros voltam ao modelo como texto, nunca como pânico.
 pub fn run(c: &Connection, book_id: &str, mode: &str, current_scene_id: Option<&str>, conversation_id: &str, call: &ToolCall, now: i64) -> ToolOutcome {
     let args: Value = match serde_json::from_str(if call.arguments_json.trim().is_empty() { "{}" } else { &call.arguments_json }) {

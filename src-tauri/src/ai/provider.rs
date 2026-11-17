@@ -128,12 +128,23 @@ pub fn parse_sse(body: impl BufRead, on_delta: &mut dyn FnMut(&str)) -> Result<T
                 calls.push(ToolCall { id: String::new(), name: String::new(), arguments_json: String::new() });
             }
             let c = &mut calls[i];
-            if let Some(id) = tc.get("id").and_then(Value::as_str) { c.id = id.into(); }
+            // pedaços seguintes vêm com "id":"" — não podem apagar o id do primeiro
+            if let Some(id) = tc.get("id").and_then(Value::as_str).filter(|id| !id.is_empty()) { c.id = id.into(); }
             if let Some(n) = tc.pointer("/function/name").and_then(Value::as_str) { c.name.push_str(n); }
             if let Some(a) = tc.pointer("/function/arguments").and_then(Value::as_str) { c.arguments_json.push_str(a); }
         }
     }
-    turn.tool_calls = calls.into_iter().filter(|c| !c.name.is_empty()).collect();
+    turn.tool_calls = calls
+        .into_iter()
+        .enumerate()
+        .filter(|(_, c)| !c.name.is_empty())
+        .map(|(i, mut c)| {
+            if c.id.is_empty() {
+                c.id = format!("call_{i}"); // a resposta da ferramenta precisa de um id
+            }
+            c
+        })
+        .collect();
     Ok(turn)
 }
 
@@ -212,6 +223,28 @@ mod tests {
         ]);
         let t = parse_sse(body, &mut |_| {}).unwrap();
         assert_eq!(t.tool_calls, vec![ToolCall { id: "c1".into(), name: "ler_cena".into(), arguments_json: r#"{"id":"s1"}"#.into() }]);
+    }
+
+    #[test]
+    fn parse_sse_parallel_calls_keep_ids_when_later_chunks_send_empty_id() {
+        // formato real da Inworld: pedaços seguintes trazem "id":"" e "name":""
+        let body = sse(&[
+            r#"{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"toolu_A","type":"function","function":{"name":"ler_cena","arguments":""}}]}}]}"#,
+            r#"{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"","type":"function","function":{"name":"","arguments":"{\"id\":\"a1\"}"}}]}}]}"#,
+            r#"{"choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"toolu_B","type":"function","function":{"name":"ler_cena","arguments":""}}]}}]}"#,
+            r#"{"choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"","type":"function","function":{"name":"","arguments":"{\"id\":\"a2\"}"}}]}}]}"#,
+            "[DONE]",
+        ]);
+        let t = parse_sse(body, &mut |_| {}).unwrap();
+        assert_eq!(t.tool_calls.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), vec!["toolu_A", "toolu_B"]);
+        assert_eq!(t.tool_calls[1].arguments_json, r#"{"id":"a2"}"#);
+    }
+
+    #[test]
+    fn parse_sse_fills_missing_call_id() {
+        let body = sse(&[r#"{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"ler_cena","arguments":"{}"}}]}}]}"#, "[DONE]"]);
+        let t = parse_sse(body, &mut |_| {}).unwrap();
+        assert!(!t.tool_calls[0].id.is_empty());
     }
 
     #[test]

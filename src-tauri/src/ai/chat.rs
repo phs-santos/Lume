@@ -346,4 +346,19 @@ mod tests {
         assert!(answer.contains("Elevador"));
         assert!(!bible.is_empty());
     }
+
+    #[test]
+    #[ignore]
+    fn live_parallel_tool_calls() {
+        let key = std::env::var("INWORLD_KEY").expect("INWORLD_KEY");
+        let model = crate::ai::provider::Inworld { key };
+        let (_d, db, b) = setup("conselheira");
+        let real_now = || std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+        let mut ev = vec![];
+        send(&db, &model, &b.id, None, "Leia as três cenas inteiras, todas ao mesmo tempo (chamadas em paralelo), e me diga em uma frase o que acontece em cada.", &mut |e| ev.push(e), &real_now).unwrap();
+        let notes = ev.iter().filter(|e| matches!(e, ChatEvent::Note { .. })).count();
+        eprintln!("notas: {notes}");
+        assert!(notes >= 2);
+        assert!(matches!(ev.last(), Some(ChatEvent::Done { .. })));
+    }
 }

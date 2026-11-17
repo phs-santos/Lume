@@ -300,4 +300,27 @@ mod tests {
         assert_eq!(month_of(1_794_900_000_000), "2026-11");
         assert_eq!(month_of(0), "1970-01");
     }
+
+    #[test]
+    #[ignore]
+    fn live_chat_and_background() {
+        let key = std::env::var("INWORLD_KEY").expect("INWORLD_KEY");
+        let model = crate::ai::provider::Inworld { key };
+        let (_d, db, b) = setup("conselheira");
+        let real_now = || std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+        for s in &b.scenes {
+            crate::ai::background::digest_scene(&db, &model, s, &real_now).unwrap();
+        }
+        let mut ev = vec![];
+        send(&db, &model, &b.id, Some(&b.scenes[0]), "Em que cena o Rafa descobre a verdade sobre o código?", &mut |e| ev.push(e), &real_now).unwrap();
+        let answer = msgs(&db, &b.id).into_iter().filter(|(r, _)| r == "assistant").last().unwrap().1;
+        let g = db.lock().unwrap();
+        let c = g.as_ref().unwrap();
+        let bible: Vec<_> = ai::bible_list(c, &b.id).unwrap().into_iter().map(|e| format!("{} ({}): {}", e.name, e.kind, e.body)).collect();
+        let usage = ai::usage_month(c, &month_of(real_now())).unwrap();
+        eprintln!("BIBLIA: {bible:#?}\nRESPOSTA: {answer}\nNOTAS: {:?}\nUSO: {usage:?}",
+            ev.iter().filter_map(|e| if let ChatEvent::Note { text } = e { Some(text.clone()) } else { None }).collect::<Vec<_>>());
+        assert!(answer.contains("Elevador"));
+        assert!(!bible.is_empty());
+    }
 }

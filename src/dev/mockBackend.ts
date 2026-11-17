@@ -169,6 +169,18 @@ Object.assign(handlers, {
 
 export function installMockBackend() {
   mockWindows("main");
+  if (location.search.includes("demo")) {
+    status = "unlocked";
+    const b = handlers.book_create({ title: "Até ter certeza", aiMode: "coautora" });
+    db.chapters = []; db.scenes = [];
+    ["Lugar de Sempre", "Linha 340", "A Porta do Elevador"].forEach((t) => {
+      const ch = handlers.chapter_create({ bookId: b.id, title: t });
+      const s = handlers.scene_create({ chapterId: ch.id, title: t });
+      s.content_json = JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "A tela do notebook é a única luz do quarto. Já são quase duas da manhã e eu ainda estou aqui." }] }] });
+    });
+    ai.key = true;
+    db.settings["assistant_open"] = "1";
+  }
   mockIPC((cmd, args) => {
     const h = handlers[cmd];
     if (!h) return undefined; // eventos/janela: ignora

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { IconAdjustmentsHorizontal, IconArrowLeft, IconDownload, IconBulb, IconHistory, IconKeyboard, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-vue";
+import { IconAdjustmentsHorizontal, IconArrowLeft, IconDownload, IconBulb, IconHistory, IconKeyboard, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconSparkles } from "@tabler/icons-vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
@@ -7,7 +7,8 @@ import { toDocx } from "../../lib/export/docx";
 import { toMarkdown } from "../../lib/export/markdown";
 import type { ExportBook } from "../../lib/export/types";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { bookOutline, chapterCreate, inboxList, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRestore, sceneSave, sceneVersions } from "../../lib/api";
+import { aiSceneTouched, bookOutline, chapterCreate, inboxList, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRestore, sceneSave, sceneVersions, settingGet, settingSet } from "../../lib/api";
+import AssistantPanel from "../assistant/AssistantPanel.vue";
 import { errorMessage } from "../../lib/errors";
 import type { Outline as OutlineT, Scene, Version } from "../../lib/types";
 import Outline from "./Outline.vue";
@@ -26,6 +27,20 @@ const emit = defineEmits<{ close: [] }>();
 const outline = ref<OutlineT | null>(null);
 const scene = ref<Scene | null>(null);
 const sidebar = ref(true);
+const assistant = ref(false);
+
+async function toggleAssistant() {
+  assistant.value = !assistant.value;
+  try {
+    await settingSet("assistant_open", assistant.value ? "1" : "0");
+  } catch {
+    /* preferência: não é grave se não salvar */
+  }
+}
+
+/** Avisa o agente de fundo que a cena mudou (ele ignora se o assistente não estiver ligado no livro). */
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+const touchScene = (id: string) => void aiSceneTouched(id).catch(() => {});
 const panel = ref<"none" | "settings" | "versions" | "export" | "help" | "ideas">("none");
 const newIdeas = ref(0);
 const mac = isMac();
@@ -60,6 +75,11 @@ const autosave = useAutosave(async (sceneId, json, words) => {
 /** Cada alteração leva o id da cena de onde veio: nunca grava texto numa cena errada. */
 function onChange(sceneId: string, json: string, words: number) {
   autosave.schedule(sceneId, json, words);
+  // 2 minutos sem digitar: grava e atualiza resumo/Bíblia desta cena
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(async () => {
+    if (await flushSafely()) touchScene(sceneId);
+  }, 120_000);
 }
 
 async function flushSafely() {
@@ -82,7 +102,9 @@ async function reloadOutline() {
 async function openScene(id: string) {
   if (scene.value?.id === id) return;
   if (!(await flushSafely())) return;
+  const left = scene.value?.id;
   scene.value = await sceneGet(id);
+  if (left) touchScene(left);
   panel.value = "none";
 }
 
@@ -208,6 +230,7 @@ async function run(action: Action) {
       case "settings": togglePanel("settings"); break;
       case "help": togglePanel("help"); break;
       case "ideas": togglePanel("ideas"); break;
+      case "assistant": await toggleAssistant(); break;
       case "close": panel.value = "none"; break;
     }
   } catch (e) {
@@ -236,6 +259,7 @@ onMounted(async () => {
   window.addEventListener("blur", flushOnBlur);
   try {
     await loadPrefs();
+    assistant.value = (await settingGet("assistant_open")) === "1";
     await reloadOutline();
     const first = outline.value?.chapters.flatMap((c) => c.scenes)[0];
     if (first) scene.value = await sceneGet(first.id);
@@ -254,11 +278,13 @@ onBeforeUnmount(() => {
   unlistenClose?.();
   unregisterFlusher();
   if (syncTimer) clearInterval(syncTimer);
+  if (idleTimer) clearTimeout(idleTimer);
+  if (scene.value) touchScene(scene.value.id);
 });
 </script>
 
 <template>
-  <div :class="['editor', { 'no-sidebar': !sidebar }]">
+  <div :class="['editor', { 'no-sidebar': !sidebar, 'with-assistant': assistant && outline }]">
       <header class="bar">
         <div v-if="sidebar && outline" class="book">
           <span class="book-title">{{ outline.book.title }}</span>
@@ -281,6 +307,7 @@ onBeforeUnmount(() => {
           <button :class="['link', 'icon', { on: panel === 'versions' }]" :title="`Versões (${hint('versions')})`" aria-label="Versões" @click="showVersions"><IconHistory :size="18" stroke-width="1.75" /></button>
           <button :class="['link', 'icon', { on: panel === 'export' }]" :title="`Exportar (${hint('export')})`" aria-label="Exportar" @click="panel = panel === 'export' ? 'none' : 'export'"><IconDownload :size="18" stroke-width="1.75" /></button>
           <button :class="['link', 'icon', { on: panel === 'settings' }]" :title="`Ajustes (${hint('settings')})`" aria-label="Ajustes" @click="panel = panel === 'settings' ? 'none' : 'settings'"><IconAdjustmentsHorizontal :size="18" stroke-width="1.75" /></button>
+          <button :class="['link', 'icon', { on: assistant }]" :title="`Assistente de IA (${hint('assistant')})`" aria-label="Assistente de IA" @click="toggleAssistant"><IconSparkles :size="18" stroke-width="1.75" /></button>
           <button class="link icon" :title="`Atalhos (${hint('help')})`" aria-label="Atalhos de teclado" @click="panel = 'help'"><IconKeyboard :size="18" stroke-width="1.75" /></button>
         </nav>
         </div>
@@ -343,6 +370,15 @@ onBeforeUnmount(() => {
         <p class="hint">Restaurar guarda o texto atual como uma versão antes.</p>
       </aside>
     </main>
+
+    <AssistantPanel
+      v-if="assistant && outline"
+      :book-id="bookId"
+      :scene-id="scene?.id ?? null"
+      :mode="outline.book.ai_mode"
+      @close="toggleAssistant"
+      @open-scene="openScene"
+    />
   </div>
 </template>
 
@@ -357,6 +393,10 @@ onBeforeUnmount(() => {
   background: var(--platen);
 }
 .editor.no-sidebar { grid-template-columns: minmax(0, 1fr); }
+/* assistente: terceira coluna à direita; a folha encolhe, nada fica coberto */
+.editor.with-assistant { grid-template-columns: 17rem minmax(0, 1fr) 22rem; }
+.editor.no-sidebar.with-assistant { grid-template-columns: minmax(0, 1fr) 22rem; }
+.with-assistant .desk { border-top-right-radius: 14px; }
 .desk {
   position: relative;
   display: flex;

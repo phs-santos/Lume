@@ -28,7 +28,7 @@ Você NÃO escreve no texto do livro e não tem como alterá-lo; se pedirem, exp
 const COMMON: &str = "Regras: antes de afirmar algo sobre o livro, consulte (mapa, Bíblia, buscar_no_livro, ler_cena). \
 Nunca invente fatos do livro; se não achar, diga que não encontrou. \
 Quando surgir um fato novo e estável (personagem, lugar, acontecimento), registre com salvar_ficha. \
-Seja econômica: consulte só o necessário.";
+Seja econômica: consulte só o necessário. Escreva em texto simples, sem Markdown (sem **, #, tabelas); listas curtas com hífen são ok.";
 
 /// Bíblia em uma linha por ficha: `id · tipo · nome (apelidos): 1ª linha`.
 pub fn bible_compact(c: &Connection, book_id: &str) -> Result<String, DbError> {

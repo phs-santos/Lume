@@ -71,16 +71,18 @@ async function startRename(id: string, title: string) {
   (document.getElementById(`rename-${id}`) as HTMLInputElement | null)?.select();
 }
 
-/** Termina a edição. Capítulo de linha única renomeia também a cena, para os dois seguirem iguais. */
-function finishRename(id: string, kind: "chapter" | "scene", alsoScene?: string) {
-  if (editing.value !== id) return;
+/**
+ * Termina a edição de `key` (id do capítulo ou da cena). Renomeia o capítulo e/ou a cena dados:
+ * na linha única os dois mudam juntos, para continuarem iguais.
+ */
+function finishRename(key: string, chapterId: string | null, sceneId: string | null) {
+  if (editing.value !== key) return;
   const t = draftTitle.value.trim();
   editing.value = null;
   if (!t) return;
-  if (kind === "scene") return run(() => sceneRename(id, t));
   run(async () => {
-    await chapterRename(id, t);
-    if (alsoScene) await sceneRename(alsoScene, t);
+    if (chapterId) await chapterRename(chapterId, t);
+    if (sceneId) await sceneRename(sceneId, t);
   });
 }
 </script>
@@ -91,25 +93,16 @@ function finishRename(id: string, kind: "chapter" | "scene", alsoScene?: string)
     <p v-if="error" class="error" role="alert">{{ error }}</p>
 
     <section v-for="c in outline.chapters" :key="c.chapter.id" :class="['chapter', { single: singleScene(c) }]">
-      <div :class="['chapter-head', { current: singleScene(c)?.id === currentSceneId }]">
+      <div v-if="!singleScene(c)" class="chapter-head hover-zone">
         <input
           v-if="editing === c.chapter.id"
           :id="`rename-${c.chapter.id}`"
           v-model="draftTitle"
           class="rename"
-          @keydown.enter="finishRename(c.chapter.id, 'chapter', singleScene(c)?.id)"
+          @keydown.enter="finishRename(c.chapter.id, c.chapter.id, null)"
           @keydown.esc="editing = null"
-          @blur="finishRename(c.chapter.id, 'chapter', singleScene(c)?.id)"
+          @blur="finishRename(c.chapter.id, c.chapter.id, null)"
         />
-        <button
-          v-else-if="singleScene(c)"
-          class="chapter-btn"
-          title="Clique duas vezes para renomear"
-          @click="emit('select', singleScene(c)!.id)"
-          @dblclick="startRename(c.chapter.id, c.chapter.title)"
-        >
-          {{ c.chapter.title }}
-        </button>
         <h3 v-else title="Clique duas vezes para renomear" @dblclick="startRename(c.chapter.id, c.chapter.title)">
           {{ c.chapter.title }}
         </h3>
@@ -139,14 +132,26 @@ function finishRename(id: string, kind: "chapter" | "scene", alsoScene?: string)
             :id="`rename-${s.id}`"
             v-model="draftTitle"
             class="rename scene-rename"
-            @keydown.enter="finishRename(s.id, 'scene')"
+            @keydown.enter="finishRename(s.id, singleScene(c) ? c.chapter.id : null, s.id)"
             @keydown.esc="editing = null"
-            @blur="finishRename(s.id, 'scene')"
+            @blur="finishRename(s.id, singleScene(c) ? c.chapter.id : null, s.id)"
           />
-          <button v-else class="scene-btn" title="Clique duas vezes para renomear" @click="emit('select', s.id)" @dblclick="startRename(s.id, s.title)">
-            <span class="scene-title">{{ s.title }}</span>
-            <span class="count">{{ fmt(s.word_count) }}</span>
-          </button>
+          <div v-else class="row hover-zone">
+            <button
+              class="scene-btn"
+              title="Clique duas vezes (ou F2) para renomear"
+              @click="emit('select', s.id)"
+              @dblclick="startRename(s.id, s.title)"
+              @keydown.f2.prevent="startRename(s.id, s.title)"
+            >
+              <span class="scene-title">{{ s.title }}</span>
+              <span class="count">{{ fmt(s.word_count) }}</span>
+            </button>
+            <template v-if="singleScene(c)">
+              <button class="icon add-scene" title="Nova cena no fim do capítulo" aria-label="Nova cena no fim do capítulo" @click="addScene(c.chapter.id)"><IconPlus :size="15" stroke-width="2" /></button>
+              <button class="icon" title="Apagar capítulo" aria-label="Apagar capítulo" @click="removeChapter(c.chapter.id)"><IconTrash :size="15" stroke-width="1.75" /></button>
+            </template>
+          </div>
         </li>
       </VueDraggable>
     </section>
@@ -170,43 +175,31 @@ function finishRename(id: string, kind: "chapter" | "scene", alsoScene?: string)
 .outline::-webkit-scrollbar { display: none; }
 /* o que rola some num degradê curto no topo, em vez de aparecer cortado pela metade */
 .outline { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 1rem); mask-image: linear-gradient(to bottom, transparent, #000 1rem); }
-header {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  margin: 0 -0.75rem 1rem -1rem;
-  padding: 1.25rem 0.75rem 0.9rem 1rem;
-  background: var(--platen);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-h2 { font: 400 1.15rem/1.3 var(--font-mono); margin: 0; color: #fff; }
-:root[data-theme="escuro"] h2 { color: var(--ink); }
 .count { color: #8b919c; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
 .error { color: #ff8a80; margin: 0 0 1rem; }
 
 .chapter { margin-bottom: 0.6rem; }
+/* capítulo de cena única: uma linha só, que é a própria cena (abre, arrasta e solta como cena) */
 .chapter.single { margin-bottom: 0.1rem; }
-/* capítulo de linha única: a própria linha abre a cena; a lista fica só como alvo de arrastar */
-.chapter.single .scene { display: none; }
-.chapter.single .scenes { min-height: 0.25rem; margin: 0; }
-.chapter-head.current { border-left: 2px solid var(--ribbon); background: rgba(255, 255, 255, 0.07); border-radius: 0 6px 6px 0; }
-.chapter-head.current .chapter-btn { color: #fff; }
-:root[data-theme="escuro"] .chapter-head.current .chapter-btn { color: var(--ink); }
-.chapter.single .chapter-head { padding: 0.35rem 0.6rem 0.35rem 0.4rem; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; }
-.chapter.single .chapter-head:hover { background: rgba(255, 255, 255, 0.05); }
-.chapter.single .chapter-head.current { border-left-color: var(--ribbon); }
-.chapter-btn { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.chapter.single .scenes { margin: 0; min-height: 0; }
+.chapter.single .scene-btn { padding-left: 0.4rem; font-size: 0.85rem; font-weight: 600; }
+.chapter.single .insert { display: none; }
 .scene-rename { width: 100%; padding: 0.4rem 0.6rem 0.4rem 0.9rem; }
 .chapter-head { display: flex; align-items: center; gap: 0.35rem; padding-right: 0.6rem; min-height: 1.6rem; }
 .chapter-head h3 { flex: 1; margin: 0; font-size: 0.85rem; font-weight: 600; cursor: default; }
 .rename { flex: 1; background: transparent; border: 0; border-bottom: 1px solid #8b919c; padding: 0; color: inherit; }
 .rename:focus { outline: none; }
-.icon { display: inline-flex; background: none; border: 0; border-radius: 6px; color: #8b919c; cursor: pointer; opacity: 0; padding: 0.2rem; }
+.icon { display: inline-flex; flex: none; background: none; border: 0; border-radius: 6px; color: #8b919c; cursor: pointer; padding: 0.2rem; }
 .icon:hover { color: #ff8a80; background: rgba(255, 255, 255, 0.06); }
-/* ícones do capítulo só no hover/foco, no lugar da contagem: fora disso não ocupam espaço */
-.chapter-head .icon { display: none; opacity: 1; }
-.chapter-head:hover .icon, .chapter-head:focus-within .icon { display: inline-flex; }
-.chapter-head:hover .count, .chapter-head:focus-within .count { display: none; }
+.icon.add-scene:hover { color: #fff; }
+/* ícones só no hover ou no foco do teclado, no lugar da contagem. Escondidos com largura 0 (não
+   display:none), para o Tab ainda chegar neles. */
+.hover-zone .icon { width: 0; padding: 0; overflow: hidden; opacity: 0; }
+.hover-zone:hover .icon, .hover-zone:focus-within .icon { width: auto; padding: 0.2rem; opacity: 1; }
+.hover-zone:hover .count, .hover-zone:focus-within .count { display: none; }
+.row { display: flex; align-items: center; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; }
+.row:hover { background: rgba(255, 255, 255, 0.05); }
+.chapter.single .row .icon:last-child { margin-right: 0.4rem; }
 
 .scenes { list-style: none; margin: 0.35rem 0 0; padding: 0; min-height: 0.75rem; }
 .scene { position: relative; }
@@ -217,15 +210,14 @@ h2 { font: 400 1.15rem/1.3 var(--font-mono); margin: 0; color: #fff; }
   width: 100%;
   padding: 0.4rem 0.6rem 0.4rem 0.9rem;
   border: 0;
-  border-radius: 0 6px 6px 0;
-  border-left: 2px solid transparent;
   background: none;
   color: inherit;
   text-align: left;
   cursor: grab;
 }
-.scene-btn:hover { background: rgba(255, 255, 255, 0.05); }
-.scene.current .scene-btn { border-left-color: var(--ribbon); color: #fff; background: rgba(255, 255, 255, 0.07); }
+.scene-btn { flex: 1; min-width: 0; }
+.scene.current .row { border-left-color: var(--ribbon); background: rgba(255, 255, 255, 0.07); }
+.scene.current .scene-btn { color: #fff; }
 :root[data-theme="escuro"] .scene.current .scene-btn { color: var(--ink); }
 .scene-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -264,7 +256,6 @@ h2 { font: 400 1.15rem/1.3 var(--font-mono); margin: 0; color: #fff; }
   font-size: 0.8rem;
 }
 .add:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
-.icon.add-scene:hover { color: #fff; }
 .chapter-add { margin: 0.5rem 0 0; width: 100%; justify-content: center; border: 1px dashed rgba(255, 255, 255, 0.15); }
 :deep(.sortable-ghost) { opacity: 0.35; }
 </style>

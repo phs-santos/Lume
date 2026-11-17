@@ -305,6 +305,7 @@ onBeforeUnmount(() => {
         :focus-mode="prefs.focus === 'on'"
         :key-sound="prefs.keysound === 'on'"
         :chapter-title="currentChapterTitle"
+        :scene-title="scene.title"
         :words="scene.word_count"
         @change="onChange"
       />

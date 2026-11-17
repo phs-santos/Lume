@@ -5,7 +5,7 @@ import { countWords } from "../../lib/wordcount";
 import { editorOptions } from "./editorConfig";
 import { playKey } from "./keySound";
 
-const props = defineProps<{ sceneId: string; contentJson: string; focusMode: boolean; keySound: boolean; chapterTitle: string; words: number }>();
+const props = defineProps<{ sceneId: string; contentJson: string; focusMode: boolean; keySound: boolean; chapterTitle: string; sceneTitle: string; words: number }>();
 const emit = defineEmits<{ change: [sceneId: string, json: string, words: number] }>();
 const scroller = ref<HTMLElement | null>(null);
 
@@ -60,6 +60,7 @@ function forwardWheel(e: WheelEvent) {
       <article class="page">
         <header class="running-head">
           <span class="chapter">{{ chapterTitle }}</span>
+          <span v-if="sceneTitle.trim() && sceneTitle.trim() !== chapterTitle.trim()" class="scene-name">{{ sceneTitle }}</span>
           <span class="rule" aria-hidden="true" />
         </header>
         <EditorContent :editor="editor" />
@@ -102,6 +103,7 @@ function forwardWheel(e: WheelEvent) {
 .page { padding: 4.5rem clamp(1.5rem, 7vw, 5.5rem) 34vh; }
 .running-head { display: flex; flex-direction: column; align-items: center; gap: 0.7rem; margin: 0 0 3rem; }
 .running-head .chapter { font: italic 1.05rem/1.3 var(--font-serif); color: var(--note); text-align: center; }
+.running-head .scene-name { margin-top: -0.45rem; font: 0.8rem/1.3 var(--font-ui); letter-spacing: 0.04em; color: var(--note); text-align: center; }
 .running-head .rule { width: 2.5rem; height: 2px; background: var(--ribbon); opacity: 0.8; }
 .page-foot { margin-top: 3rem; text-align: right; font-size: 0.78rem; color: var(--note); }
 .page :deep(.ProseMirror) {

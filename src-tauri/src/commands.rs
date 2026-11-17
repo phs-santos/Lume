@@ -146,8 +146,32 @@ db_cmd!(scene_move(id: String, to_chapter_id: String, to_index: i64) -> () => |c
 db_cmd!(scene_delete(id: String) -> () => |c| scenes::scene_delete(c, &id));
 db_cmd!(scene_versions(scene_id: String) -> Vec<Version> => |c| scenes::scene_versions(c, &scene_id));
 db_cmd!(scene_restore(version_id: String) -> Scene => |c| scenes::scene_restore(c, &version_id, now_ms()));
-db_cmd!(setting_get(key: String) -> Option<String> => |c| settings::setting_get(c, &key));
-db_cmd!(setting_set(key: String, value: String) -> () => |c| settings::setting_set(c, &key, &value));
+/// Preferências que a webview nunca lê nem escreve pelo comando genérico (a chave de IA).
+const PRIVATE_SETTINGS: &[&str] = &["ai.inworld_key"];
+
+pub fn guarded_setting_get(s: &AppState, key: &str) -> CmdResult<Option<String>> {
+    if PRIVATE_SETTINGS.contains(&key) {
+        return Err("FORBIDDEN".into());
+    }
+    with_db(s, |c| settings::setting_get(c, key))
+}
+
+pub fn guarded_setting_set(s: &AppState, key: &str, value: &str) -> CmdResult<()> {
+    if PRIVATE_SETTINGS.contains(&key) {
+        return Err("FORBIDDEN".into());
+    }
+    with_db(s, |c| settings::setting_set(c, key, value))
+}
+
+#[tauri::command]
+pub fn setting_get(state: State<AppState>, key: String) -> CmdResult<Option<String>> {
+    guarded_setting_get(&state, &key)
+}
+
+#[tauri::command]
+pub fn setting_set(state: State<AppState>, key: String, value: String) -> CmdResult<()> {
+    guarded_setting_set(&state, &key, &value)
+}
 
 // ---------- celular e caixa de entrada ----------
 use crate::db::inbox::{self, InboxItem};
@@ -256,9 +280,227 @@ db_cmd!(inbox_restore(id: String) -> () => |c| inbox::inbox_set_status(c, &id, "
 db_cmd!(inbox_delete(id: String) -> () => |c| inbox::inbox_delete(c, &id));
 db_cmd!(inbox_to_scene(id: String, chapter_id: String, index: Option<i64>) -> Scene => |c| inbox::inbox_to_scene(c, &id, &chapter_id, index, now_ms()));
 
+// ---------- assistente de IA ----------
+use crate::ai::{background, chat, provider::Inworld};
+use crate::db::ai::{self as aidb, BibleEntry, Conversation, Message, Proposal, UsageRow};
+
+pub fn ai_key_save(s: &AppState, key: &str) -> CmdResult<()> {
+    let key = key.trim();
+    if key.is_empty() {
+        return Err("Chave vazia".into());
+    }
+    with_db(s, |c| settings::setting_set(c, "ai.inworld_key", key))
+}
+
+pub fn ai_key_present(s: &AppState) -> CmdResult<bool> {
+    with_db(s, |c| Ok(settings::setting_get(c, "ai.inworld_key")?.is_some_and(|k| !k.is_empty())))
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct AiModels {
+    pub chat: String,
+    pub background: String,
+}
+
+pub fn ai_models(s: &AppState) -> CmdResult<AiModels> {
+    with_db(s, |c| {
+        let cfg = chat::AiConfig::load(c)?;
+        Ok(AiModels { chat: cfg.chat_model, background: cfg.background_model })
+    })
+}
+
+/// Lê a chave dentro do Rust. Sem chave: mensagem pronta para a interface.
+fn inworld(db: &crate::state::SharedDb) -> Result<Inworld, String> {
+    let g = db.lock().unwrap();
+    let c = g.as_ref().ok_or_else(|| "LOCKED".to_string())?;
+    let key = settings::setting_get(c, "ai.inworld_key").map_err(err)?.filter(|k| !k.is_empty());
+    key.map(|key| Inworld { key }).ok_or_else(|| "Configure a chave da Inworld em Ajustes".to_string())
+}
+
+#[tauri::command]
+pub fn ai_key_set(state: State<AppState>, key: String) -> CmdResult<()> {
+    ai_key_save(&state, &key)
+}
+
+#[tauri::command]
+pub fn ai_key_status(state: State<AppState>) -> CmdResult<bool> {
+    ai_key_present(&state)
+}
+
+#[tauri::command]
+pub fn ai_models_get(state: State<AppState>) -> CmdResult<AiModels> {
+    ai_models(&state)
+}
+
+#[tauri::command]
+pub fn ai_models_set(state: State<AppState>, chat: String, background: String) -> CmdResult<()> {
+    with_db(&state, |c| {
+        settings::setting_set(c, "ai.chat_model", chat.trim())?;
+        settings::setting_set(c, "ai.background_model", background.trim())
+    })
+}
+
+db_cmd!(ai_usage(month: String) -> Vec<UsageRow> => |c| aidb::usage_month(c, &month));
+db_cmd!(ai_enable(book_id: String) -> () => |c| settings::setting_set(c, &format!("ai.enabled.{book_id}"), "1"));
+
+#[derive(serde::Serialize)]
+pub struct ConversationView {
+    pub conversation: Conversation,
+    pub messages: Vec<Message>,
+}
+
+fn conversation_view(c: &rusqlite::Connection, cv: Conversation) -> Result<ConversationView, db::DbError> {
+    let messages = aidb::messages_all(c, &cv.id)?;
+    Ok(ConversationView { conversation: cv, messages })
+}
+
+db_cmd!(ai_conversation(book_id: String) -> ConversationView => |c| { let cv = aidb::conversation_current(c, &book_id, now_ms())?; conversation_view(c, cv) });
+db_cmd!(ai_conversation_new(book_id: String) -> ConversationView => |c| { let cv = aidb::conversation_new(c, &book_id, now_ms())?; conversation_view(c, cv) });
+db_cmd!(ai_conversations(book_id: String) -> Vec<Conversation> => |c| aidb::conversation_list(c, &book_id));
+db_cmd!(ai_conversation_open(id: String) -> ConversationView => |c| { let cv = aidb::conversation_open(c, &id)?; conversation_view(c, cv) });
+db_cmd!(bible_list(book_id: String) -> Vec<BibleEntry> => |c| aidb::bible_list(c, &book_id));
+db_cmd!(bible_update(id: String, name: String, aliases: Vec<String>, body: String, story_order: Option<i64>) -> BibleEntry => |c| aidb::bible_update_user(c, &id, &name, &aliases, &body, story_order, now_ms()));
+db_cmd!(bible_absorb_note(id: String, index: usize) -> BibleEntry => |c| aidb::bible_absorb_note(c, &id, index, now_ms()));
+db_cmd!(bible_delete(id: String) -> () => |c| aidb::bible_delete(c, &id));
+db_cmd!(proposal_set_status(id: String, status: String) -> () => |c| aidb::proposal_set_status(c, &id, &status));
+db_cmd!(proposals_pending(book_id: String) -> Vec<Proposal> => |c| aidb::proposals_pending(c, &book_id));
+
+/// Envia uma mensagem e transmite a resposta pelo canal.
+#[tauri::command]
+pub async fn ai_send(state: State<'_, AppState>, book_id: String, scene_id: Option<String>, text: String, on_event: tauri::ipc::Channel<chat::ChatEvent>) -> CmdResult<()> {
+    let db = state.db.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut emit = |e: chat::ChatEvent| {
+            let _ = on_event.send(e);
+        };
+        let model = match inworld(&db) {
+            Ok(m) => m,
+            Err(message) => {
+                // grava a pergunta mesmo assim, para não se perder
+                let _ = with_db_shared(&db, |c| {
+                    let cv = aidb::conversation_current(c, &book_id, now_ms())?;
+                    aidb::message_add(c, &cv.id, "user", text.trim(), None, now_ms()).map(|_| ())
+                });
+                emit(chat::ChatEvent::Error { message: message.clone() });
+                return Err(message);
+            }
+        };
+        let _ = chat::fold_if_needed(&db, &model, &book_id, &now_ms);
+        chat::send(&db, &model, &book_id, scene_id.as_deref(), &text, &mut emit, &now_ms)
+    })
+    .await
+    .map_err(err)?
+}
+
+#[tauri::command]
+pub async fn ai_retry(state: State<'_, AppState>, book_id: String, scene_id: Option<String>, on_event: tauri::ipc::Channel<chat::ChatEvent>) -> CmdResult<()> {
+    let db = state.db.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut emit = |e: chat::ChatEvent| {
+            let _ = on_event.send(e);
+        };
+        let model = inworld(&db).inspect_err(|m| emit(chat::ChatEvent::Error { message: m.clone() }))?;
+        chat::retry(&db, &model, &book_id, scene_id.as_deref(), &mut emit, &now_ms)
+    })
+    .await
+    .map_err(err)?
+}
+
+fn with_db_shared<T>(db: &crate::state::SharedDb, f: impl FnOnce(&rusqlite::Connection) -> Result<T, db::DbError>) -> CmdResult<T> {
+    let g = db.lock().unwrap();
+    let c = g.as_ref().ok_or_else(|| "LOCKED".to_string())?;
+    f(c).map_err(err)
+}
+
+/// Livro com o Assistente ligado e chave configurada?
+fn ai_ready_for_scene(db: &crate::state::SharedDb, scene_id: &str) -> Option<Inworld> {
+    let book: String = with_db_shared(db, |c| {
+        let ch = scenes::scene_get(c, scene_id)?.chapter_id;
+        Ok(c.query_row("SELECT book_id FROM chapters WHERE id=?1", [ch], |r| r.get(0))?)
+    })
+    .ok()?;
+    let enabled = with_db_shared(db, |c| settings::setting_get(c, &format!("ai.enabled.{book}"))).ok()??;
+    (enabled == "1").then_some(())?;
+    inworld(db).ok()
+}
+
+static DIGESTING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// A cena mudou (a pessoa saiu dela ou parou de digitar): atualiza resumo e Bíblia em segundo plano.
+#[tauri::command]
+pub fn ai_scene_touched(state: State<AppState>, scene_id: String) {
+    let db = state.db.clone();
+    {
+        let mut d = DIGESTING.lock().unwrap();
+        if d.contains(&scene_id) {
+            return;
+        }
+        d.push(scene_id.clone());
+    }
+    std::thread::spawn(move || {
+        if let Some(model) = ai_ready_for_scene(&db, &scene_id) {
+            let _ = background::digest_scene(&db, &model, &scene_id, &now_ms);
+        }
+        DIGESTING.lock().unwrap().retain(|x| x != &scene_id);
+    });
+}
+
+static FIRST_PASS_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static FIRST_PASS_CANCEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[derive(Clone, serde::Serialize)]
+pub struct Progress {
+    pub done: usize,
+    pub total: usize,
+}
+
+/// Lê o livro inteiro (só cenas pendentes), uma por vez. Só uma passada por vez.
+#[tauri::command]
+pub async fn ai_first_pass(state: State<'_, AppState>, book_id: String, on_progress: tauri::ipc::Channel<Progress>) -> CmdResult<()> {
+    use std::sync::atomic::Ordering;
+    if FIRST_PASS_RUNNING.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+    FIRST_PASS_CANCEL.store(false, Ordering::SeqCst);
+    let db = state.db.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || {
+        let model = inworld(&db)?;
+        background::run_queue(&db, &model, &book_id, &FIRST_PASS_CANCEL, &mut |done, total| {
+            let _ = on_progress.send(Progress { done, total });
+        }, &now_ms)
+    })
+    .await
+    .map_err(err);
+    FIRST_PASS_RUNNING.store(false, Ordering::SeqCst);
+    r?
+}
+
+#[tauri::command]
+pub fn ai_first_pass_cancel() {
+    FIRST_PASS_CANCEL.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+db_cmd!(ai_pending_count(book_id: String) -> usize => |c| background::pending_scenes(c, &book_id).map(|v| v.len()));
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ai_key_never_returns_to_webview() {
+        let (_d, s) = state();
+        create_vault(&s, "ana", "x").unwrap();
+        assert!(!ai_key_present(&s).unwrap());
+        ai_key_save(&s, "  SEGREDO-123  ").unwrap();
+        assert!(ai_key_present(&s).unwrap());
+        assert_eq!(guarded_setting_get(&s, "ai.inworld_key").unwrap_err(), "FORBIDDEN");
+        assert_eq!(guarded_setting_set(&s, "ai.inworld_key", "x").unwrap_err(), "FORBIDDEN");
+        let models = ai_models(&s).unwrap();
+        assert!(!format!("{models:?}").contains("SEGREDO"));
+        // a chave fica salva sem espaços em volta
+        assert_eq!(with_db(&s, |c| settings::setting_get(c, "ai.inworld_key")).unwrap().as_deref(), Some("SEGREDO-123"));
+        assert_eq!(guarded_setting_get(&s, "theme").unwrap(), None);
+    }
 
     fn state() -> (tempfile::TempDir, AppState) {
         let d = tempfile::tempdir().unwrap();

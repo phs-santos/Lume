@@ -1,4 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
+import type { AiModels, BibleEntry, ChatEvent, Conversation, ConversationView, Progress, Proposal, UsageRow } from "./types";
 import type { AiMode, Book, InboxItem, RemoteStatus, Chapter, Outline, Scene, Version, VaultStatus } from "./types";
 
 export const vaultStatus = () => invoke<VaultStatus>("vault_status");
@@ -50,3 +51,37 @@ export const inboxRestore = (id: string) => invoke<void>("inbox_restore", { id }
 export const inboxDelete = (id: string) => invoke<void>("inbox_delete", { id });
 export const inboxToScene = (id: string, chapterId: string, index?: number) =>
   invoke<Scene>("inbox_to_scene", { id, chapterId, index: index ?? null });
+
+// ---------- assistente de IA (a chave nunca volta para cá) ----------
+export const aiKeySet = (key: string) => invoke<void>("ai_key_set", { key });
+export const aiKeyStatus = () => invoke<boolean>("ai_key_status");
+export const aiModelsGet = () => invoke<AiModels>("ai_models_get");
+export const aiModelsSet = (chat: string, background: string) => invoke<void>("ai_models_set", { chat, background });
+export const aiUsage = (month: string) => invoke<UsageRow[]>("ai_usage", { month });
+export const aiEnable = (bookId: string) => invoke<void>("ai_enable", { bookId });
+export const aiConversation = (bookId: string) => invoke<ConversationView>("ai_conversation", { bookId });
+export const aiConversationNew = (bookId: string) => invoke<ConversationView>("ai_conversation_new", { bookId });
+export const aiConversations = (bookId: string) => invoke<Conversation[]>("ai_conversations", { bookId });
+export const aiConversationOpen = (id: string) => invoke<ConversationView>("ai_conversation_open", { id });
+
+function channel<T>(on: (e: T) => void) {
+  const ch = new Channel<T>();
+  ch.onmessage = on;
+  return ch;
+}
+export const aiSend = (bookId: string, sceneId: string | null, text: string, on: (e: ChatEvent) => void) =>
+  invoke<void>("ai_send", { bookId, sceneId, text, onEvent: channel(on) });
+export const aiRetry = (bookId: string, sceneId: string | null, on: (e: ChatEvent) => void) =>
+  invoke<void>("ai_retry", { bookId, sceneId, onEvent: channel(on) });
+export const aiSceneTouched = (sceneId: string) => invoke<void>("ai_scene_touched", { sceneId });
+export const aiFirstPass = (bookId: string, on: (p: Progress) => void) => invoke<void>("ai_first_pass", { bookId, onProgress: channel(on) });
+export const aiFirstPassCancel = () => invoke<void>("ai_first_pass_cancel");
+export const aiPendingCount = (bookId: string) => invoke<number>("ai_pending_count", { bookId });
+
+export const bibleList = (bookId: string) => invoke<BibleEntry[]>("bible_list", { bookId });
+export const bibleUpdate = (id: string, name: string, aliases: string[], body: string, storyOrder: number | null) =>
+  invoke<BibleEntry>("bible_update", { id, name, aliases, body, storyOrder });
+export const bibleAbsorbNote = (id: string, index: number) => invoke<BibleEntry>("bible_absorb_note", { id, index });
+export const bibleDelete = (id: string) => invoke<void>("bible_delete", { id });
+export const proposalSetStatus = (id: string, status: Proposal["status"]) => invoke<void>("proposal_set_status", { id, status });
+export const proposalsPending = (bookId: string) => invoke<Proposal[]>("proposals_pending", { bookId });

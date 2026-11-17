@@ -121,6 +121,52 @@ Object.assign(handlers, {
   },
 });
 
+// assistente de IA (simulado): responde devagar, consulta uma cena e mantém fichas
+const ai = { key: false, conv: [] as Row[], msgs: [] as Row[], bible: [] as Row[], models: { chat: "anthropic/claude-sonnet-5-5", background: "anthropic/claude-haiku-5-5" } };
+const curConv = (bookId: string) => {
+  let c = ai.conv.find((x) => x.book_id === bookId && !x.closed);
+  if (!c) { c = { id: id(), book_id: bookId, title: "Conversa", rolling_summary: "", folded_count: 0, closed: false, created_at: Date.now(), updated_at: Date.now() }; ai.conv.push(c); }
+  return c;
+};
+const view = (c: Row) => ({ conversation: c, messages: ai.msgs.filter((m) => m.conversation_id === c.id) });
+const addMsg = (c: Row, role: string, content: string) => { const m = { id: id(), conversation_id: c.id, role, content, tool_name: null, created_at: Date.now() }; ai.msgs.push(m); return m; };
+const send = (ch: any, e: any) => ch?.onmessage?.(e);
+Object.assign(handlers, {
+  ai_key_set: () => void (ai.key = true),
+  ai_key_status: () => ai.key,
+  ai_models_get: () => ai.models,
+  ai_models_set: ({ chat, background }: any) => void (ai.models = { chat, background }),
+  ai_usage: () => (ai.key ? [{ month: "2026-11", model: ai.models.chat, input_tokens: 48200, output_tokens: 3100, cost: null }] : []),
+  ai_enable: () => undefined,
+  ai_conversation: ({ bookId }: any) => view(curConv(bookId)),
+  ai_conversation_new: ({ bookId }: any) => { ai.conv.forEach((c) => c.book_id === bookId && (c.closed = true)); return view(curConv(bookId)); },
+  ai_conversations: ({ bookId }: any) => ai.conv.filter((c) => c.book_id === bookId),
+  ai_conversation_open: ({ id: cid }: any) => { const c = ai.conv.find((x) => x.id === cid)!; ai.conv.forEach((x) => x.book_id === c.book_id && (x.closed = true)); c.closed = false; return view(c); },
+  ai_send: async ({ bookId, text, onEvent }: any) => {
+    const c = curConv(bookId);
+    if (c.title === "Conversa") c.title = text.slice(0, 48);
+    addMsg(c, "user", text);
+    if (!ai.key) { send(onEvent, { type: "error", message: "Configure a chave da Inworld em Ajustes" }); throw "Configure a chave da Inworld em Ajustes"; }
+    const note = "consultei a cena \"Linha 340\""; addMsg(c, "note", note); send(onEvent, { type: "note", text: note });
+    const answer = "Pelo que li, o Rafa ainda não sabe do bug nessa cena — ele só descobre mais adiante, no elevador.";
+    for (const w of answer.split(/(?<= )/)) { await new Promise((r) => setTimeout(r, 25)); send(onEvent, { type: "delta", text: w }); }
+    const m = addMsg(c, "assistant", answer);
+    if (!ai.bible.length) ai.bible.push({ id: id(), book_id: bookId, kind: "personagem", name: "Rafa", aliases: ["Rafael"], body: "Programador, escreve de madrugada.", ai_notes: [], story_order: null, source_scene_id: db.scenes[0]?.id ?? null, edited_by_user: false, updated_at: Date.now() });
+    send(onEvent, { type: "done", message_id: m.id });
+  },
+  ai_retry: () => undefined,
+  ai_scene_touched: () => undefined,
+  ai_first_pass: async ({ onProgress }: any) => { for (let i = 0; i <= 3; i++) { send(onProgress, { done: i, total: 3 }); await new Promise((r) => setTimeout(r, 300)); } },
+  ai_first_pass_cancel: () => undefined,
+  ai_pending_count: () => 0,
+  bible_list: ({ bookId }: any) => ai.bible.filter((e) => e.book_id === bookId),
+  bible_update: ({ id: eid, name, aliases, body, storyOrder }: any) => Object.assign(ai.bible.find((e) => e.id === eid)!, { name, aliases, body, story_order: storyOrder, edited_by_user: true }),
+  bible_absorb_note: ({ id: eid, index }: any) => { const e = ai.bible.find((x) => x.id === eid)!; const [n] = e.ai_notes.splice(index, 1); e.body += "\n" + n.fact; return e; },
+  bible_delete: ({ id: eid }: any) => void (ai.bible = ai.bible.filter((e) => e.id !== eid)),
+  proposal_set_status: () => undefined,
+  proposals_pending: () => [],
+});
+
 export function installMockBackend() {
   mockWindows("main");
   mockIPC((cmd, args) => {

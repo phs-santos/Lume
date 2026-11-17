@@ -33,3 +33,30 @@ export interface InboxItem {
   id: string; kind: "audio" | "text"; mime: string; size: number; created_at: number;
   status: "nova" | "arquivada"; text: string | null;
 }
+
+// ---------- assistente de IA ----------
+export type BibleKind = "personagem" | "lugar" | "fato" | "linha_do_tempo";
+export interface AiNote { fact: string; source_scene_id: string | null }
+export interface BibleEntry {
+  id: string; book_id: string; kind: BibleKind; name: string; aliases: string[]; body: string;
+  ai_notes: AiNote[]; story_order: number | null; source_scene_id: string | null; edited_by_user: boolean; updated_at: number;
+}
+export interface Conversation {
+  id: string; book_id: string; title: string; rolling_summary: string; folded_count: number;
+  closed: boolean; created_at: number; updated_at: number;
+}
+export interface AiMessage { id: string; conversation_id: string; role: "user" | "assistant" | "note"; content: string; tool_name: string | null; created_at: number }
+export interface ConversationView { conversation: Conversation; messages: AiMessage[] }
+export interface Proposal {
+  id: string; book_id: string; conversation_id: string | null; scene_id: string | null; text: string;
+  status: "pendente" | "inserida" | "virou_cena" | "descartada"; created_at: number;
+}
+export interface UsageRow { month: string; model: string; input_tokens: number; output_tokens: number; cost: number | null }
+export interface AiModels { chat: string; background: string }
+export type ChatEvent =
+  | { type: "delta"; text: string }
+  | { type: "note"; text: string }
+  | { type: "proposal"; proposal: Proposal }
+  | { type: "done"; message_id: string }
+  | { type: "error"; message: string };
+export interface Progress { done: number; total: number }

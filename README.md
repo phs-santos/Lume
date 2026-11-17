@@ -1,4 +1,4 @@
-# MaDu
+# Lume
 
 Uma máquina de escrever para livros: cofre cifrado no próprio computador, livro feito de cenas que se arrastam,
 editor em que a linha atual fica sempre no meio da tela, e exportação para Word e Markdown.
@@ -38,8 +38,8 @@ WebView2 instalados (no Windows 10/11 atual o WebView2 já vem). O instalador `.
 
 ## Onde ficam os dados
 
-Na pasta de dados do app (`~/Library/Application Support/com.madu.app/` no macOS,
-`%APPDATA%\com.madu.app\` no Windows):
+Na pasta de dados do app (`~/Library/Application Support/com.lume.app/` no macOS,
+`%APPDATA%\com.lume.app\` no Windows):
 
 - `vault.json`: a chave do banco, embrulhada pela senha e pelas 24 palavras. Não contém texto do livro.
 - `livro.db`: o banco SQLCipher com os livros, cifrado.

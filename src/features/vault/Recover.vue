@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import VaultLayout from "../../components/VaultLayout.vue";
 import { computed, ref } from "vue";
 import { vaultRecover } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
@@ -34,7 +35,7 @@ async function recover() {
 </script>
 
 <template>
-  <main class="sheet">
+  <VaultLayout>
     <h1>Recuperar o cofre</h1>
     <p class="lede">Digite as 24 palavras que você anotou e escolha uma senha nova.</p>
     <form @submit.prevent="recover">
@@ -48,5 +49,5 @@ async function recover() {
         <button type="button" class="link" @click="emit('back')">Voltar</button>
       </div>
     </form>
-  </main>
+  </VaultLayout>
 </template>

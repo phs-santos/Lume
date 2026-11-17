@@ -38,6 +38,7 @@ pub fn create_vault(s: &AppState, nickname: &str, password: &str) -> CmdResult<S
     if s.db_path().exists() {
         return Err("DB_EXISTS".into());
     }
+    std::fs::create_dir_all(&s.dir).map_err(err)?;
     let (v, key, phrase) = vault::create(nickname, password).map_err(err)?;
     // Cria o banco antes de gravar o cofre; se o cofre não puder ser gravado, desfaz o banco.
     open_db(s, &key)?;
@@ -182,6 +183,15 @@ mod tests {
         let (_d, s) = state();
         std::fs::write(s.db_path(), b"x").unwrap();
         assert_eq!(status(&s), "missing_vault");
+    }
+
+    #[test]
+    fn create_in_fresh_install_creates_data_dir() {
+        let d = tempfile::tempdir().unwrap();
+        let s = AppState::new(d.path().join("ainda-nao-existe"));
+        create_vault(&s, "ana", "x").unwrap();
+        assert_eq!(status(&s), "unlocked");
+        assert!(s.vault_path().exists());
     }
 
     #[test]

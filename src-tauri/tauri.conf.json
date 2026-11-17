@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MaDu",
+  "productName": "Lume",
   "version": "0.1.0",
-  "identifier": "com.madu.app",
+  "identifier": "com.lume.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "MaDu",
+        "title": "Lume",
         "width": 1200, "minWidth": 720,
         "height": 820, "minHeight": 560
       }

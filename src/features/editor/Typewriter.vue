@@ -60,12 +60,18 @@ onBeforeUnmount(() => editor.value?.destroy());
   height: 100%;
   overflow-y: auto;
   scrollbar-width: thin;
+  background: var(--desk);
+  padding: 0 1.5rem;
 }
+/* A folha: uma tira contínua de papel, como saindo do rolo da máquina. */
 .page {
-  max-width: 68ch;
+  max-width: calc(68ch + 9rem);
+  min-height: 100%;
   margin: 0 auto;
   /* meia tela de folga em cima e embaixo: a primeira e a última linha também chegam ao centro */
-  padding: 50vh 2rem;
+  padding: 50vh clamp(1.5rem, 6vw, 4.5rem);
+  background: var(--sheet);
+  box-shadow: 0 0 0 1px rgba(28, 35, 51, 0.05), 0 20px 50px -24px rgba(28, 35, 51, 0.35);
 }
 .page :deep(.ProseMirror) {
   font-family: var(--font-text);

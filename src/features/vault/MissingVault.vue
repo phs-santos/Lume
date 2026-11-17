@@ -1,15 +1,19 @@
+<script setup lang="ts">
+import VaultLayout from "../../components/VaultLayout.vue";
+</script>
+
 <template>
-  <main class="sheet">
+  <VaultLayout>
     <h1>O cofre sumiu</h1>
     <p class="lede">
       Seu livro cifrado continua neste computador, mas o arquivo que guarda a chave dele (<code>vault.json</code>) não
-      está mais na pasta do app. Sem ele, o livro não abre, e o MaDu não vai criar um cofre novo por cima.
+      está mais na pasta do app. Sem ele, o livro não abre, e o Lume não vai criar um cofre novo por cima.
     </p>
     <p class="lede">
-      Na pasta de dados do MaDu existe uma cópia de segurança chamada <code>vault.json.bak</code>. Feche o app, renomeie
-      essa cópia para <code>vault.json</code> e abra o MaDu de novo.
+      Na pasta de dados do Lume existe uma cópia de segurança chamada <code>vault.json.bak</code>. Feche o app, renomeie
+      essa cópia para <code>vault.json</code> e abra o Lume de novo.
     </p>
-  </main>
+  </VaultLayout>
 </template>
 
 <style scoped>

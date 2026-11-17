@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { IconAdjustmentsHorizontal, IconArrowLeft, IconDownload, IconHistory, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
@@ -179,7 +180,11 @@ onBeforeUnmount(() => {
 
     <main class="desk">
       <header class="bar">
-        <button class="link" @click="back">Livros</button>
+        <button class="link" title="Voltar aos livros" @click="back"><IconArrowLeft :size="18" stroke-width="1.75" /> Livros</button>
+        <button class="link icon" :title="sidebar ? 'Esconder sumário (Cmd+\\)' : 'Mostrar sumário (Cmd+\\)'" :aria-label="sidebar ? 'Esconder sumário' : 'Mostrar sumário'" @click="sidebar = !sidebar">
+          <IconLayoutSidebarLeftCollapse v-if="sidebar" :size="18" stroke-width="1.75" />
+          <IconLayoutSidebarLeftExpand v-else :size="18" stroke-width="1.75" />
+        </button>
         <input
           v-if="scene"
           class="scene-title"
@@ -188,10 +193,14 @@ onBeforeUnmount(() => {
           @blur="renameScene"
           @keydown.enter="($event.target as HTMLInputElement).blur()"
         />
-        <span class="status" :class="saveState">{{ saveState === "erro" ? "Não salvo" : saveState === "salvando" ? "Salvando…" : "Salvo" }}</span>
-        <button class="link" @click="showVersions">Versões</button>
-        <button class="link" @click="panel = panel === 'export' ? 'none' : 'export'">Exportar</button>
-        <button class="link" @click="panel = panel === 'settings' ? 'none' : 'settings'">Ajustes</button>
+        <span class="status" :class="saveState" role="status">
+          <span class="dot" />{{ saveState === "erro" ? "Não salvo" : saveState === "salvando" ? "Salvando…" : "Salvo" }}
+        </span>
+        <nav class="tools" aria-label="Ferramentas">
+          <button :class="['link', { on: panel === 'versions' }]" @click="showVersions"><IconHistory :size="18" stroke-width="1.75" /> Versões</button>
+          <button :class="['link', { on: panel === 'export' }]" @click="panel = panel === 'export' ? 'none' : 'export'"><IconDownload :size="18" stroke-width="1.75" /> Exportar</button>
+          <button :class="['link', { on: panel === 'settings' }]" @click="panel = panel === 'settings' ? 'none' : 'settings'"><IconAdjustmentsHorizontal :size="18" stroke-width="1.75" /> Ajustes</button>
+        </nav>
       </header>
 
       <p v-if="error" class="error banner" role="alert">{{ error }}</p>
@@ -240,30 +249,37 @@ onBeforeUnmount(() => {
 .bar {
   display: flex;
   align-items: center;
-  gap: 1.25rem;
-  padding: 0.75rem 1.25rem;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
   font-size: 0.85rem;
   border-bottom: 1px solid var(--rule);
 }
-.bar .link { text-decoration: none; }
-.bar .link:hover { color: var(--ink); }
+.bar .icon { padding: 0 0.5rem; }
+.tools { display: flex; gap: 0.15rem; }
+.link.on { background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); }
 .scene-title {
   flex: 1;
   min-width: 0;
-  border: 0;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
   background: none;
   font: 400 1rem var(--font-mono);
   color: var(--ink);
 }
-.scene-title:focus { outline: none; border-bottom: 1px solid var(--rule); }
-.status { color: var(--note); font-size: 0.78rem; }
+.scene-title:hover { border-color: var(--rule); }
+.scene-title:focus { outline: none; border-color: var(--ink); }
+.status { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--note); font-size: 0.78rem; padding: 0 0.5rem; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: #3c8a5f; }
+.status.salvando .dot { background: #c99a2e; }
 .status.erro { color: var(--ribbon); }
+.status.erro .dot { background: var(--ribbon); }
 .banner { padding: 0.5rem 1.25rem; margin: 0; }
 .desk > :deep(.typewriter) { flex: 1; min-height: 0; }
 .empty { color: var(--note); text-align: center; margin-top: 30vh; }
 .versions {
   position: absolute;
-  top: 3rem;
+  top: 3.4rem;
   right: 1rem;
   width: 20rem;
   max-height: 60vh;
@@ -271,13 +287,14 @@ onBeforeUnmount(() => {
   padding: 1rem 1.25rem;
   background: var(--paper);
   border: 1px solid var(--rule);
-  box-shadow: 0 8px 24px rgba(28, 35, 51, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px -16px rgba(28, 35, 51, 0.35);
   z-index: 10;
   font-size: 0.85rem;
 }
 .versions ol { list-style: none; padding: 0; margin: 0 0 0.75rem; }
 .versions li { display: grid; grid-template-columns: 1fr auto; gap: 0.1rem 1rem; padding: 0.5rem 0; border-bottom: 1px solid var(--rule); }
-.versions li .link { grid-column: 2; grid-row: 1; }
+.versions li .link { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
 .export-msg { margin-top: 0.75rem; word-break: break-all; }
 .hint { color: var(--note); font-size: 0.8rem; margin: 0; }
 </style>

@@ -36,7 +36,7 @@ export async function toDocx(b: ExportBook): Promise<Uint8Array> {
     });
   });
   const doc = new Document({
-    creator: "MaDu",
+    creator: "Lume",
     title: b.title,
     styles: { default: { document: { run: { font: "Georgia", size: 24 } } } },
     sections: [{ children }],

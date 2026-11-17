@@ -96,5 +96,5 @@ export function installMockBackend() {
     if (!h) return undefined; // eventos/janela: ignora
     return h(args ?? {});
   });
-  console.info("[MaDu] backend simulado em memória (senha do desbloqueio: senha123)");
+  console.info("[Lume] backend simulado em memória (senha do desbloqueio: senha123)");
 }

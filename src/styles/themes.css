@@ -13,6 +13,8 @@
   --note: #646b78;       /* anotação a lápis */
   --rule: #c9ced6;
   --platen-ink: #d6d9de;
+  --desk: #dde1e6;      /* fundo atrás da folha */
+  --sheet: #fbfbfc;     /* a folha em que se escreve */
   --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Courier Prime", "Courier New", monospace;
   --font-serif: "Literata", Georgia, serif;
@@ -28,6 +30,8 @@
   --note: #8a909b;
   --rule: #33363d;
   --platen-ink: #b9bdc4;
+  --desk: #131418;
+  --sheet: #1f2126;
   color-scheme: dark;
 }
 
@@ -63,28 +67,58 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .field span { display: block; font-size: 0.85rem; color: var(--note); margin-bottom: 0.3rem; }
 .field input, .field textarea, .field select {
   width: 100%;
-  padding: 0.55rem 0;
-  border: 0;
-  border-bottom: 1px solid var(--rule);
-  background: transparent;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: color-mix(in srgb, #fff 70%, var(--paper));
   font-family: var(--font-mono);
   font-size: 1.05rem;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.field input:focus, .field textarea:focus { outline: none; border-bottom-color: var(--ink); }
+.field input:focus, .field textarea:focus {
+  outline: none;
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ribbon) 18%, transparent);
+}
 .field textarea { resize: vertical; min-height: 6rem; line-height: 1.6; }
 
 .btn {
-  display: inline-block;
-  padding: 0.6rem 1.2rem;
-  border: 1px solid var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 2.5rem;
+  padding: 0 1.15rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
   background: var(--ink);
   color: var(--paper);
-  border-radius: 2px;
+  font-weight: 500;
   cursor: pointer;
+  transition: background-color 0.15s, transform 0.1s;
 }
-.btn:disabled { opacity: 0.4; cursor: default; }
+.btn:hover { background: color-mix(in srgb, var(--ink) 88%, var(--ribbon)); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.4; cursor: default; transform: none; }
 .btn.quiet { background: transparent; color: var(--ink); border-color: var(--rule); }
-.link { background: none; border: 0; padding: 0; color: var(--note); text-decoration: underline; cursor: pointer; }
+.btn.quiet:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.btn.wide { width: 100%; }
+
+/* Botão secundário sem caixa: texto discreto que ganha fundo no hover (nada de sublinhado). */
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.25rem;
+  padding: 0 0.7rem;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--note);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.link:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 
 .error { color: var(--ribbon); margin: 0 0 1rem; }
 .actions { display: flex; gap: 1rem; align-items: center; margin-top: 1.5rem; }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import VaultLayout from "../../components/VaultLayout.vue";
 import { computed, ref } from "vue";
 import { vaultCreate } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
@@ -34,19 +35,17 @@ async function create() {
 </script>
 
 <template>
-  <main class="sheet">
+  <VaultLayout :wide="!!phrase">
     <template v-if="!phrase">
-      <h1>Seu cofre</h1>
-      <p class="lede">
-        Tudo o que você escrever aqui fica cifrado neste computador. Só a sua senha abre.
-      </p>
+      <h1>Crie seu cofre</h1>
+      <p class="lede">Tudo o que você escrever aqui fica cifrado neste computador. Só a sua senha abre.</p>
       <form @submit.prevent="create">
         <label class="field"><span>Apelido</span><input v-model="nickname" autocomplete="username" autofocus /></label>
         <label class="field"><span>Senha</span><input v-model="password" type="password" autocomplete="new-password" /></label>
         <label class="field"><span>Repita a senha</span><input v-model="confirm" type="password" autocomplete="new-password" /></label>
         <p v-if="error" class="error">{{ error }}</p>
         <p v-else-if="password && confirm && problem" class="error">{{ problem }}</p>
-        <div class="actions"><button class="btn" :disabled="!!problem || busy">Criar cofre</button></div>
+        <button class="btn wide" :disabled="!!problem || busy">Criar cofre</button>
       </form>
     </template>
 
@@ -60,19 +59,22 @@ async function create() {
         <li v-for="(w, i) in phrase" :key="i">{{ w }}</li>
       </ol>
       <label class="check"><input v-model="wrote" type="checkbox" /> Anotei as palavras</label>
-      <div class="actions"><button class="btn" :disabled="!wrote" @click="emit('done')">Começar a escrever</button></div>
+      <div class="actions"><button class="btn wide" :disabled="!wrote" @click="emit('done')">Começar a escrever</button></div>
     </template>
-  </main>
+  </VaultLayout>
 </template>
 
 <style scoped>
 .words {
   columns: 3;
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 1rem 1rem 1rem 2.75rem;
   column-gap: 2rem;
   font-family: var(--font-mono);
   font-size: 1.05rem;
-  padding-left: 2rem;
-  margin: 0 0 2rem;
+  margin: 0 0 1.5rem;
   line-height: 1.9;
 }
 .words li::marker { color: var(--note); font-size: 0.8em; }

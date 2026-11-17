@@ -198,6 +198,18 @@ pub fn remote_disconnect(state: State<AppState>) -> CmdResult<()> {
     remote::forget_session(c).map_err(err)
 }
 
+/// Importa um .epub do disco como livro novo.
+#[tauri::command]
+pub async fn book_import_epub(state: State<'_, AppState>, path: String, ai_mode: String) -> CmdResult<Book> {
+    let parsed = tauri::async_runtime::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|e| format!("Não consegui ler o arquivo: {e}"))?;
+        crate::import::epub::parse_epub(&bytes).map_err(err)
+    })
+    .await
+    .map_err(err)??;
+    with_db(&state, |c| crate::import::import_book(c, &parsed, &ai_mode, now_ms()))
+}
+
 /// Só uma sincronização por vez (o painel e o ciclo de fundo podem pedir juntos).
 static SYNCING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 

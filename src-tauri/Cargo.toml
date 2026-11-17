@@ -35,6 +35,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 crypto_box = { version = "0.9", features = ["seal", "std"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+roxmltree = "0.20"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

@@ -73,7 +73,7 @@ pub fn inbox_delete(c: &Connection, id: &str) -> Result<(), DbError> {
     Ok(())
 }
 
-fn count_words(s: &str) -> i64 {
+pub(crate) fn count_words(s: &str) -> i64 {
     s.split(|ch: char| !(ch.is_alphanumeric() || ch == '-' || ch == '\'' || ch == '’'))
         .filter(|w| w.chars().any(char::is_alphanumeric))
         .count() as i64

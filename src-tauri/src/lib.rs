@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod db;
+pub mod import;
 pub mod remote;
 pub mod state;
 pub mod vault;
@@ -39,6 +40,7 @@ pub fn run() {
             commands::book_rename,
             commands::book_set_mode,
             commands::book_outline,
+            commands::book_import_epub,
             commands::chapter_create,
             commands::chapter_rename,
             commands::chapter_move,

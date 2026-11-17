@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { IconLock, IconPlus, IconX } from "@tabler/icons-vue";
+import { IconBookUpload, IconLock, IconPlus, IconX } from "@tabler/icons-vue";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { computed, nextTick, onMounted, ref } from "vue";
 import DeskScene from "../../components/DeskScene.vue";
-import { bookCreate, bookList, vaultLock } from "../../lib/api";
+import { bookCreate, bookImportEpub, bookList, vaultLock } from "../../lib/api";
 import { coverColor } from "../../lib/coverColor";
 import { errorMessage } from "../../lib/errors";
 import { greeting, timeOfDay } from "../../lib/timeOfDay";
@@ -49,6 +50,23 @@ async function create() {
   }
 }
 
+const importing = ref(false);
+
+async function importEpub() {
+  error.value = "";
+  const path = await openDialog({ multiple: false, filters: [{ name: "Livro EPUB", extensions: ["epub"] }] });
+  if (typeof path !== "string") return;
+  importing.value = true;
+  try {
+    const b = await bookImportEpub(path, "conselheira");
+    emit("open", b.id);
+  } catch (e) {
+    error.value = errorMessage(e);
+  } finally {
+    importing.value = false;
+  }
+}
+
 async function lock() {
   await vaultLock();
   emit("locked");
@@ -87,6 +105,12 @@ onMounted(load);
           <button class="cover new" @click="startCreating">
             <IconPlus :size="28" stroke-width="1.5" />
             <span>{{ books.length ? "Novo livro" : "Comece seu primeiro livro" }}</span>
+          </button>
+        </li>
+        <li>
+          <button class="cover new" :disabled="importing" @click="importEpub">
+            <IconBookUpload :size="28" stroke-width="1.5" />
+            <span>{{ importing ? "Importando…" : "Importar EPUB" }}</span>
           </button>
         </li>
       </ul>

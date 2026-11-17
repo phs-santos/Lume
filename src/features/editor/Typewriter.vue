@@ -5,7 +5,7 @@ import { countWords } from "../../lib/wordcount";
 import { editorOptions } from "./editorConfig";
 import { playKey } from "./keySound";
 
-const props = defineProps<{ sceneId: string; contentJson: string; focusMode: boolean; keySound: boolean; machine: boolean }>();
+const props = defineProps<{ sceneId: string; contentJson: string; focusMode: boolean; keySound: boolean; chapterTitle: string; words: number }>();
 const emit = defineEmits<{ change: [sceneId: string, json: string, words: number] }>();
 const scroller = ref<HTMLElement | null>(null);
 
@@ -17,9 +17,6 @@ function parse(json: string) {
   }
 }
 
-/** Altura da linha de datilografia (fração da tela). Com a máquina, logo acima do rolo. */
-const LINE_AT = { machine: 0.64, plain: 0.5 };
-
 /** Mantém a linha do cursor fixa, como o rolo de uma máquina de escrever. */
 function centerCaret() {
   const ed = editor.value;
@@ -27,8 +24,7 @@ function centerCaret() {
   if (!ed || !box) return;
   const caret = ed.view.coordsAtPos(ed.state.selection.head);
   const rect = box.getBoundingClientRect();
-  const lineBottom = rect.top + rect.height * (props.machine ? LINE_AT.machine : LINE_AT.plain);
-  box.scrollTop += caret.bottom - lineBottom;
+  box.scrollTop += caret.bottom - (rect.top + rect.height * 0.5);
 }
 
 const editor = useEditor({
@@ -59,19 +55,16 @@ function forwardWheel(e: WheelEvent) {
 </script>
 
 <template>
-  <div :class="['typewriter', { focus: focusMode, 'with-machine': machine }]" @wheel.passive="forwardWheel">
+  <div :class="['typewriter', { focus: focusMode }]" @wheel.passive="forwardWheel">
     <div ref="scroller" class="sheet">
-      <EditorContent :editor="editor" class="page" />
-    </div>
-    <!-- A máquina: o rolo logo abaixo da linha que se escreve e o corpo com as teclas. Só decoração. -->
-    <div v-if="machine" class="machine" aria-hidden="true">
-      <div class="roller"><span class="knob left" /><span class="knob right" /></div>
-      <div class="body">
-        <span class="spool left" /><span class="spool right" />
-        <div class="keys" />
-        <div class="keys second" />
-        <div class="spacebar" />
-      </div>
+      <article class="page">
+        <header class="running-head">
+          <span class="chapter">{{ chapterTitle }}</span>
+          <span class="rule" aria-hidden="true" />
+        </header>
+        <EditorContent :editor="editor" />
+        <footer class="page-foot">{{ words.toLocaleString("pt-BR") }} {{ words === 1 ? "palavra" : "palavras" }} nesta cena</footer>
+      </article>
     </div>
   </div>
 </template>
@@ -79,7 +72,6 @@ function forwardWheel(e: WheelEvent) {
 <style scoped>
 /* A mesa (madeira) fica parada; só a folha rola. */
 .typewriter {
-  --line: 64%;
   position: relative;
   height: 100%;
   overflow: hidden;
@@ -99,24 +91,39 @@ function forwardWheel(e: WheelEvent) {
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--ink) 25%, transparent) transparent;
-  background: var(--sheet);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 30px 60px -20px rgba(0, 0, 0, 0.55);
+  /* papel: branco quente com fibra bem leve */
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .4 0 0 0 0 .32 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    var(--sheet);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 30px 60px -20px rgba(0, 0, 0, 0.55), inset 0 0 80px rgba(120, 100, 70, 0.06);
 }
-/* Com a máquina, a barra de rolagem não aparece: o rolo é que "puxa" o papel. */
-.with-machine .sheet { scrollbar-width: none; }
 .sheet:not(:hover) { scrollbar-color: transparent transparent; }
 /* meia tela de folga em cima e embaixo: a primeira e a última linha também chegam ao centro */
-.page { padding: 50vh clamp(1.5rem, 6vw, 4.5rem); }
+.page { padding: 50vh clamp(1.5rem, 7vw, 5.5rem); }
+.running-head { display: flex; flex-direction: column; align-items: center; gap: 0.7rem; margin: -2rem 0 3rem; }
+.running-head .chapter { font: italic 1.05rem/1.3 var(--font-serif); color: var(--note); text-align: center; }
+.running-head .rule { width: 2.5rem; height: 2px; background: var(--ribbon); opacity: 0.8; }
+.page-foot { margin-top: 3rem; text-align: right; font-size: 0.78rem; color: var(--note); }
 .page :deep(.ProseMirror) {
   font-family: var(--font-text);
-  font-size: 1.15rem;
-  line-height: 1.75;
+  font-size: 1.18rem;
+  line-height: 1.8;
+  hyphens: auto;
   color: var(--ink);
   caret-color: var(--ribbon);
   outline: none;
 }
 .page :deep(.ProseMirror p) { margin: 0; text-indent: 1.5em; }
 .page :deep(.ProseMirror p:first-child) { text-indent: 0; }
+/* capitular: a primeira letra da cena maior, como nos livros */
+.page :deep(.ProseMirror > p:first-child::first-letter) {
+  float: left;
+  font-size: 3.4em;
+  line-height: 0.85;
+  padding: 0.08em 0.1em 0 0;
+  color: var(--ink);
+  font-family: var(--font-serif);
+}
 .page :deep(.ProseMirror blockquote) { margin: 1em 0 1em 1.5em; font-style: italic; }
 
 /* A fita: traço vermelho na margem, na altura do parágrafo atual. */
@@ -129,81 +136,6 @@ function forwardWheel(e: WheelEvent) {
   bottom: 0.35em;
   width: 2px;
   background: var(--ribbon);
-}
-
-/* ---------- a máquina ---------- */
-.machine {
-  --w: min(100% - 1rem, calc(68ch + 9rem + 7rem));
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(var(--line) + 0.35rem);
-  bottom: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  pointer-events: none;
-}
-.roller {
-  position: relative;
-  width: var(--w);
-  height: 2.6rem;
-  border-radius: 1.3rem;
-  background: linear-gradient(180deg, #4a4e57 0%, #1d1f24 45%, #0f1013 70%, #2a2d33 100%);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
-  z-index: 2;
-}
-.knob {
-  position: absolute;
-  top: 50%;
-  width: 3.6rem;
-  height: 3.6rem;
-  margin-top: -1.8rem;
-  border-radius: 50%;
-  background:
-    repeating-conic-gradient(from 0deg, rgba(255, 255, 255, 0.08) 0 6deg, transparent 6deg 12deg),
-    radial-gradient(circle, #3b3f47 0 55%, #15161a 56% 100%);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
-}
-.knob.left { left: -2.4rem; }
-.knob.right { right: -2.4rem; }
-.body {
-  position: relative;
-  flex: 1;
-  width: calc(var(--w) + 3rem);
-  margin-top: -1.1rem;
-  padding: 2.6rem 3.5rem 0;
-  border-radius: 2.5rem 2.5rem 0 0;
-  background: linear-gradient(180deg, #2c2f36 0%, #1c1e22 60%, #151619 100%);
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.06), 0 -10px 30px rgba(0, 0, 0, 0.35);
-}
-.spool {
-  position: absolute;
-  top: 1.1rem;
-  width: 3.2rem;
-  height: 3.2rem;
-  border-radius: 50%;
-  background: radial-gradient(circle, #15161a 0 18%, #b42318 19% 46%, #0d0d0f 47% 70%, #3a3d45 71%);
-}
-.spool.left { left: 2.2rem; }
-.spool.right { right: 2.2rem; }
-.keys {
-  height: 2.6rem;
-  margin: 1.6rem auto 0;
-  width: 78%;
-  background: radial-gradient(circle at 50% 45%, #e9e4d8 0 30%, #8f8a80 33% 38%, #0e0f12 40% 47%, transparent 49%);
-  background-size: 2.6rem 2.6rem;
-  background-repeat: space no-repeat;
-  opacity: 0.92;
-}
-.keys.second { width: 70%; margin-top: 0.3rem; }
-.spacebar {
-  width: 38%;
-  height: 0.9rem;
-  margin: 0.8rem auto 0;
-  border-radius: 0.45rem;
-  background: linear-gradient(180deg, #e9e4d8, #a9a397);
-  box-shadow: 0 2px 0 #0e0f12;
 }
 
 .focus .page :deep(.ProseMirror > *) { opacity: 0.3; transition: opacity 0.2s; }

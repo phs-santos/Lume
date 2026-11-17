@@ -14,6 +14,7 @@ export const bookList = () => invoke<Book[]>("book_list");
 export const bookCreate = (title: string, aiMode: AiMode) => invoke<Book>("book_create", { title, aiMode });
 export const bookRename = (id: string, title: string) => invoke<void>("book_rename", { id, title });
 export const bookSetMode = (id: string, aiMode: AiMode) => invoke<void>("book_set_mode", { id, aiMode });
+export const bookImportEpub = (path: string, aiMode: AiMode) => invoke<Book>("book_import_epub", { path, aiMode });
 export const bookOutline = (bookId: string) => invoke<Outline>("book_outline", { bookId });
 
 export const chapterCreate = (bookId: string, title: string, index?: number) =>

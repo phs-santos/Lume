@@ -183,6 +183,10 @@ async function backgroundSync() {
   await refreshIdeas();
 }
 
+const currentChapterTitle = computed(
+  () => outline.value?.chapters.find((c) => c.chapter.id === scene.value?.chapter_id)?.chapter.title ?? "",
+);
+
 const currentSummary = computed(() => flatScenes().find((x) => x.id === scene.value?.id) ?? null);
 
 async function onIdeaScene(id: string) {
@@ -312,7 +316,8 @@ onBeforeUnmount(() => {
         :content-json="scene.content_json"
         :focus-mode="prefs.focus === 'on'"
         :key-sound="prefs.keysound === 'on'"
-        :machine="prefs.machine === 'on'"
+        :chapter-title="currentChapterTitle"
+        :words="scene.word_count"
         @change="onChange"
       />
       <p v-else-if="outline" class="empty">Crie uma cena no sumário para começar.</p>

@@ -21,6 +21,8 @@ const messages: Record<ErrorCode, string> = {
 export function errorMessage(e: unknown): string {
   const s = String(e);
   if (s.startsWith("NETWORK")) return "Sem conexão com o servidor. Confira a internet e tente de novo.";
+  if (s.startsWith("NOT_EPUB")) return "Esse arquivo não parece ser um EPUB válido.";
+  if (s === "EMPTY_EPUB") return "Não encontrei texto de capítulos nesse EPUB.";
   if (s.startsWith("UNDECRYPTABLE"))
     return "Algumas ideias foram cifradas para outra chave e não podem ser abertas aqui. No celular, saia e entre de novo.";
   if (s.startsWith("SYNC_PARTIAL")) return "Algumas ideias não chegaram. Vou tentar de novo daqui a pouco.";

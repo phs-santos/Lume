@@ -6,11 +6,12 @@ import { writeFile } from "@tauri-apps/plugin-fs";
 import { toDocx } from "../../lib/export/docx";
 import { toMarkdown } from "../../lib/export/markdown";
 import type { ExportBook } from "../../lib/export/types";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { aiSceneTouched, bookOutline, chapterCreate, inboxList, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRestore, sceneSave, sceneVersions, settingGet, settingSet } from "../../lib/api";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { aiSceneTouched, proposalSetStatus, bookOutline, chapterCreate, inboxList, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRestore, sceneSave, sceneVersions, settingGet, settingSet } from "../../lib/api";
 import AssistantPanel from "../assistant/AssistantPanel.vue";
 import { errorMessage } from "../../lib/errors";
-import type { Outline as OutlineT, Scene, Version } from "../../lib/types";
+import { countWords } from "../../lib/wordcount";
+import type { Outline as OutlineT, Proposal, Scene, Version } from "../../lib/types";
 import Outline from "./Outline.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import Typewriter from "./Typewriter.vue";
@@ -204,6 +205,45 @@ const currentChapterTitle = computed(
   () => outline.value?.chapters.find((c) => c.chapter.id === scene.value?.chapter_id)?.chapter.title ?? "",
 );
 
+const typewriter = ref<{ insertAtEnd: (t: string) => boolean } | null>(null);
+
+/** Proposta aprovada: entra pelo editor aberto (um ⌘Z desfaz), e o autosave grava. */
+async function insertProposal(p: Proposal) {
+  try {
+    if (p.scene_id && scene.value?.id !== p.scene_id) {
+      await openScene(p.scene_id);
+      await nextTick();
+      await new Promise((r) => setTimeout(r, 50)); // o editor da cena nova precisa existir
+    }
+    if (!typewriter.value?.insertAtEnd(p.text)) throw new Error("Abra uma cena para inserir o trecho.");
+    await proposalSetStatus(p.id, "inserida");
+  } catch (e) {
+    error.value = errorMessage(e);
+  }
+}
+
+/** Proposta vira uma cena nova logo depois da cena de onde veio. */
+async function proposalAsScene(p: Proposal) {
+  try {
+    if (!(await flushSafely()) || !outline.value) return;
+    const ref = p.scene_id ?? scene.value?.id ?? null;
+    const ch = outline.value.chapters.find((c) => c.scenes.some((s) => s.id === ref)) ?? outline.value.chapters[outline.value.chapters.length - 1];
+    if (!ch) throw new Error("Crie um capítulo antes.");
+    const index = ch.scenes.findIndex((s) => s.id === ref);
+    const paragraphs = p.text.split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean);
+    const s = await sceneCreate(ch.chapter.id, paragraphs[0]?.slice(0, 40) || "Proposta", index >= 0 ? index + 1 : undefined);
+    const doc = { type: "doc", content: paragraphs.map((t) => ({ type: "paragraph", content: [{ type: "text", text: t }] })) };
+    await sceneSave(s.id, JSON.stringify(doc), countWords(paragraphs.join("\n")));
+    await reloadOutline();
+    await openScene(s.id);
+    await proposalSetStatus(p.id, "virou_cena");
+  } catch (e) {
+    error.value = errorMessage(e);
+  }
+}
+
+const discardProposal = (p: Proposal) => void proposalSetStatus(p.id, "descartada").catch((e) => (error.value = errorMessage(e)));
+
 const sceneTitles = computed(() => Object.fromEntries(flatScenes().map((s) => [s.id, s.title])));
 
 const currentSummary = computed(() => flatScenes().find((x) => x.id === scene.value?.id) ?? null);
@@ -328,6 +368,7 @@ onBeforeUnmount(() => {
 
       <Typewriter
         v-if="scene"
+        ref="typewriter"
         :key="`${scene.id}-${editorKey}`"
         :scene-id="scene.id"
         :content-json="scene.content_json"
@@ -381,6 +422,9 @@ onBeforeUnmount(() => {
       :scene-titles="sceneTitles"
       @close="toggleAssistant"
       @open-scene="openScene"
+      @insert-proposal="insertProposal"
+      @proposal-as-scene="proposalAsScene"
+      @discard-proposal="discardProposal"
     />
   </div>
 </template>

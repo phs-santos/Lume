@@ -47,6 +47,26 @@ const editor = useEditor({
 
 onBeforeUnmount(() => editor.value?.destroy());
 
+/**
+ * Proposta aprovada da Coautora: parágrafos no fim da cena, numa única alteração
+ * (um ⌘Z desfaz tudo). O autosave normal grava; nada é escrito direto no banco.
+ */
+function insertAtEnd(text: string): boolean {
+  const ed = editor.value;
+  if (!ed) return false;
+  const paragraphs = text
+    .split(/\n\s*\n/)
+    .map((t) => t.replace(/\s*\n\s*/g, " ").trim())
+    .filter(Boolean)
+    .map((t) => ({ type: "paragraph", content: [{ type: "text", text: t }] }));
+  if (!paragraphs.length) return false;
+  if (ed.isEmpty) ed.chain().setContent({ type: "doc", content: paragraphs }, true).focus("end").run();
+  else ed.chain().insertContentAt(ed.state.doc.content.size, paragraphs).focus("end").run();
+  return true;
+}
+
+defineExpose({ insertAtEnd });
+
 /** A roda do mouse sobre a mesa (fora da folha) também rola a folha. */
 function forwardWheel(e: WheelEvent) {
   const box = scroller.value;

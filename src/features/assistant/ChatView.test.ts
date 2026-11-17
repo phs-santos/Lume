@@ -15,6 +15,7 @@ vi.mock("../../lib/api", () => ({
   aiConversations: vi.fn(async () => [conv("cv2", "Nova"), { ...conv("cv", "Sobre o Rafa"), closed: true }]),
   aiConversationOpen: vi.fn(async () => ({ conversation: conv("cv", "Sobre o Rafa"), messages: [msg("user", "antiga")] })),
   aiSend: vi.fn(),
+  proposalsPending: vi.fn(async () => []),
   aiRetry: vi.fn(),
 }));
 import * as api from "../../lib/api";
@@ -40,7 +41,39 @@ async function type(el: HTMLElement, text: string) {
 const bubbles = (el: HTMLElement) => [...el.querySelectorAll(".msg")].map((m) => m.textContent!.trim());
 afterEach(() => { app?.unmount(); app = null; document.body.innerHTML = ""; vi.clearAllMocks(); });
 
+const proposal = { id: "p1", book_id: "b", conversation_id: "cv", scene_id: "s1", text: "Rafa sorriu.", status: "pendente" as const, created_at: 0 };
+
 describe("ChatView", () => {
+  it("cartão de proposta: os 3 botões emitem e o cartão some", async () => {
+    vi.mocked(api.proposalsPending).mockResolvedValueOnce([proposal, { ...proposal, id: "p2" }, { ...proposal, id: "p3" }]);
+    const emitted: string[] = [];
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    app = createApp(ChatView, {
+      bookId: "b", sceneId: "s1", mode: "coautora",
+      onInsertProposal: () => emitted.push("insert"), onProposalAsScene: () => emitted.push("scene"), onDiscardProposal: () => emitted.push("discard"),
+    });
+    app.mount(el);
+    await flush();
+    expect(el.querySelectorAll(".proposal")).toHaveLength(3);
+    (el.querySelector('[data-test="p-insert"]') as HTMLButtonElement).click(); await flush();
+    (el.querySelector('[data-test="p-scene"]') as HTMLButtonElement).click(); await flush();
+    (el.querySelector('[data-test="p-discard"]') as HTMLButtonElement).click(); await flush();
+    expect(emitted).toEqual(["insert", "scene", "discard"]);
+    expect(el.querySelectorAll(".proposal")).toHaveLength(0);
+  });
+
+  it("conselheira nunca mostra cartão de proposta", async () => {
+    vi.mocked(api.proposalsPending).mockResolvedValueOnce([proposal]);
+    vi.mocked(api.aiSend).mockImplementation(async (_b, _s, _t, on: (e: ChatEvent) => void) => {
+      on({ type: "proposal", proposal });
+      on({ type: "done", message_id: "m" });
+    });
+    const el = await mount("conselheira");
+    await type(el, "escreve");
+    expect(el.querySelector(".proposal")).toBeNull();
+  });
+
   it("mostra o histórico ao abrir", async () => {
     const el = await mount();
     expect(bubbles(el)).toEqual(["oi", "olá"]);

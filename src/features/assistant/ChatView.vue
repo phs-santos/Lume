@@ -2,7 +2,7 @@
 import { nextTick, onMounted, ref } from "vue";
 import { IconArrowUp, IconHistory, IconPlus, IconRefresh, IconSearch } from "@tabler/icons-vue";
 import {
-  aiConversation, aiConversationNew, aiConversationOpen, aiConversations, aiKeySet, aiKeyStatus, aiRetry, aiSend,
+  aiConversation, aiConversationNew, aiConversationOpen, aiConversations, aiKeySet, aiKeyStatus, aiRetry, aiSend, proposalsPending,
 } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 import type { ChatEvent, Conversation, Proposal } from "../../lib/types";
@@ -43,6 +43,9 @@ onMounted(async () => {
   try {
     hasKey.value = await aiKeyStatus();
     load(await aiConversation(props.bookId));
+    // propostas ainda sem decisão continuam esperando, mesmo depois de fechar o app
+    if (props.mode === "coautora")
+      for (const p of await proposalsPending(props.bookId)) items.value.push({ kind: "proposal", id: p.id, proposal: p });
   } catch (e) {
     error.value = errorMessage(e);
   }

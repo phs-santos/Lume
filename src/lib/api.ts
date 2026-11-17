@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AiMode, Book, Chapter, Outline, Scene, Version, VaultStatus } from "./types";
+import type { AiMode, Book, InboxItem, RemoteStatus, Chapter, Outline, Scene, Version, VaultStatus } from "./types";
 
 export const vaultStatus = () => invoke<VaultStatus>("vault_status");
 export const vaultCreate = (nickname: string, password: string) =>
@@ -36,3 +36,16 @@ export const sceneRestore = (versionId: string) => invoke<Scene>("scene_restore"
 
 export const settingGet = (key: string) => invoke<string | null>("setting_get", { key });
 export const settingSet = (key: string, value: string) => invoke<void>("setting_set", { key, value });
+
+export const remoteStatus = () => invoke<RemoteStatus>("remote_status");
+export const remoteConnect = (url: string, nickname: string, password: string, invite?: string) =>
+  invoke<void>("remote_connect", { url, nickname, password, invite: invite || null });
+export const remoteDisconnect = () => invoke<void>("remote_disconnect");
+export const remoteSync = () => invoke<number>("remote_sync");
+export const inboxList = () => invoke<InboxItem[]>("inbox_list");
+export const inboxBody = (id: string) => invoke<number[]>("inbox_body", { id });
+export const inboxArchive = (id: string) => invoke<void>("inbox_archive", { id });
+export const inboxRestore = (id: string) => invoke<void>("inbox_restore", { id });
+export const inboxDelete = (id: string) => invoke<void>("inbox_delete", { id });
+export const inboxToScene = (id: string, chapterId: string, index?: number) =>
+  invoke<Scene>("inbox_to_scene", { id, chapterId, index: index ?? null });

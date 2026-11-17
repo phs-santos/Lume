@@ -90,6 +90,37 @@ const handlers: Record<string, (a: any) => any> = {
   setting_set: ({ key, value }) => { db.settings[key] = value; },
 };
 
+// celular e caixa de entrada (simulados)
+let remote = { connected: false, nickname: "henrilgrim", url: "https://lume.codexolimpo.com" };
+let inbox: Row[] = [];
+Object.assign(handlers, {
+  remote_status: () => ({ connected: remote.connected, nickname: remote.connected ? remote.nickname : null, url: remote.connected ? remote.url : null }),
+  remote_connect: ({ password }: any) => {
+    if (password !== "senha123") throw "Apelido ou senha incorretos";
+    remote.connected = true;
+    inbox = [
+      { id: "i1", kind: "text", mime: "text/plain", size: 80, created_at: Date.now() - 3600_000, status: "nova", text: "E se a Marina encontrar a carta antes do casamento?\nO irmão sabia de tudo." },
+      { id: "i2", kind: "audio", mime: "audio/webm", size: 2000, created_at: Date.now() - 600_000, status: "nova", text: null },
+    ];
+  },
+  remote_disconnect: () => void (remote.connected = false),
+  remote_sync: () => 0,
+  inbox_list: () => [...inbox].sort((a, b) => b.created_at - a.created_at),
+  inbox_body: () => [],
+  inbox_archive: ({ id }: any) => void (inbox.find((i) => i.id === id)!.status = "arquivada"),
+  inbox_restore: ({ id }: any) => void (inbox.find((i) => i.id === id)!.status = "nova"),
+  inbox_delete: ({ id }: any) => void (inbox = inbox.filter((i) => i.id !== id)),
+  inbox_to_scene: ({ id, chapterId, index }: any) => {
+    const it = inbox.find((i) => i.id === id)!;
+    if (it.kind !== "text") throw "NOT_TEXT";
+    const lines = it.text.split("\n").filter(Boolean);
+    const s = handlers.scene_create({ chapterId, title: lines[0].slice(0, 60), index });
+    s.content_json = JSON.stringify({ type: "doc", content: lines.map((t: string) => ({ type: "paragraph", content: [{ type: "text", text: t }] })) });
+    it.status = "arquivada";
+    return s;
+  },
+});
+
 export function installMockBackend() {
   mockWindows("main");
   mockIPC((cmd, args) => {

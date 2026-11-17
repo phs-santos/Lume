@@ -11,7 +11,9 @@ export type ErrorCode =
   | "CHAPTER_NOT_EMPTY"
   | "DB_EXISTS"
   | "WRONG_KEY"
-  | "NOT_FOUND";
+  | "NOT_FOUND"
+  | "NOT_CONNECTED"
+  | "NOT_TEXT";
 
 export interface Book { id: string; title: string; ai_mode: AiMode; created_at: number }
 export interface Chapter { id: string; book_id: string; title: string; position: number }
@@ -23,3 +25,9 @@ export interface Scene {
   word_count: number; position: number; updated_at: number;
 }
 export interface Version { id: string; created_at: number; word_count: number }
+
+export interface RemoteStatus { connected: boolean; nickname: string | null; url: string | null }
+export interface InboxItem {
+  id: string; kind: "audio" | "text"; mime: string; size: number; created_at: number;
+  status: "nova" | "arquivada"; text: string | null;
+}

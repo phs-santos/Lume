@@ -10,10 +10,14 @@ const messages: Record<ErrorCode, string> = {
   DB_EXISTS: "Já existe um livro cifrado neste computador. Não vou criar um cofre novo por cima dele.",
   WRONG_KEY: "Este cofre não abre o livro guardado neste computador. Os arquivos podem ter sido trocados.",
   NOT_FOUND: "Não encontrei isso. Talvez já tenha sido apagado.",
+  NOT_CONNECTED: "Este computador ainda não está conectado ao celular.",
+  NOT_TEXT: "Só ideias escritas viram cena por enquanto. Áudio vai ganhar transcrição em breve.",
 };
 
 /** Converte o erro vindo do Rust em uma frase para a pessoa. */
 export function errorMessage(e: unknown): string {
   const s = String(e);
-  return (messages as Record<string, string>)[s] ?? `Algo deu errado: ${s}`;
+  if (s.startsWith("NETWORK")) return "Sem conexão com o servidor. Confira a internet e tente de novo.";
+  if (s.startsWith("SYNC_PARTIAL")) return "Algumas ideias não chegaram. Vou tentar de novo daqui a pouco.";
+  return (messages as Record<string, string>)[s] ?? (/^[A-ZÁ-Ú]/.test(s) && !s.includes("_") ? s : `Algo deu errado: ${s}`);
 }

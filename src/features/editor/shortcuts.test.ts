@@ -19,6 +19,7 @@ describe("matchShortcut no Mac (Cmd)", () => {
   it("Cmd+Shift+F liga o modo foco", () => expect(matchShortcut(k("f", { meta: true, shift: true }), true)).toBe("toggleFocus"));
   it("Cmd+Shift+L troca claro/escuro", () => expect(matchShortcut(k("L", { meta: true, shift: true }), true)).toBe("toggleTheme"));
   it("Cmd+/ abre a lista de atalhos", () => expect(matchShortcut(k("/", { meta: true }), true)).toBe("help"));
+  it("Cmd+Shift+I abre as ideias", () => expect(matchShortcut(k("I", { meta: true, shift: true }), true)).toBe("ideas"));
   it("Esc fecha painéis", () => expect(matchShortcut(k("Escape"), true)).toBe("close"));
   it("Ctrl+S no Mac não é atalho", () => expect(matchShortcut(k("s", { ctrl: true }), true)).toBeNull());
   it("letra sem modificador não é atalho", () => expect(matchShortcut(k("s"), true)).toBeNull());

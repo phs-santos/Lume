@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { IconAdjustmentsHorizontal, IconArrowLeft, IconDownload, IconHistory, IconKeyboard, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-vue";
+import { IconAdjustmentsHorizontal, IconArrowLeft, IconDownload, IconBulb, IconHistory, IconKeyboard, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
@@ -7,7 +7,7 @@ import { toDocx } from "../../lib/export/docx";
 import { toMarkdown } from "../../lib/export/markdown";
 import type { ExportBook } from "../../lib/export/types";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { bookOutline, chapterCreate, sceneCreate, sceneGet, sceneRename, sceneRestore, sceneSave, sceneVersions } from "../../lib/api";
+import { bookOutline, chapterCreate, inboxList, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRename, sceneRestore, sceneSave, sceneVersions } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 import type { Outline as OutlineT, Scene, Version } from "../../lib/types";
 import Outline from "./Outline.vue";
@@ -15,6 +15,7 @@ import SettingsPanel from "./SettingsPanel.vue";
 import Typewriter from "./Typewriter.vue";
 import { loadPrefs, prefs, setPref } from "./settings";
 import ShortcutsHelp from "./ShortcutsHelp.vue";
+import InboxPanel from "../inbox/InboxPanel.vue";
 import { isMac, label, matchShortcut, SHORTCUTS, type Action } from "./shortcuts";
 import { useAutosave } from "./useAutosave";
 import { handleCloseRequest, registerFlusher } from "./exitGuard";
@@ -25,7 +26,8 @@ const emit = defineEmits<{ close: [] }>();
 const outline = ref<OutlineT | null>(null);
 const scene = ref<Scene | null>(null);
 const sidebar = ref(true);
-const panel = ref<"none" | "settings" | "versions" | "export" | "help">("none");
+const panel = ref<"none" | "settings" | "versions" | "export" | "help" | "ideas">("none");
+const newIdeas = ref(0);
 const mac = isMac();
 const totalWords = computed(() =>
   (outline.value?.chapters ?? []).reduce((n, c) => n + c.scenes.reduce((m, x) => m + x.word_count, 0), 0),
@@ -166,7 +168,29 @@ async function stepScene(delta: 1 | -1) {
   if (next) await openScene(next.id);
 }
 
-const togglePanel = (p: "settings" | "versions" | "export" | "help") =>
+/** Conta as ideias novas para o selo do botão. */
+async function refreshIdeas() {
+  newIdeas.value = (await inboxList().catch(() => [])).filter((i) => i.status === "nova").length;
+}
+
+/** Busca no servidor em segundo plano, se este computador estiver conectado. */
+async function backgroundSync() {
+  try {
+    if ((await remoteStatus()).connected) await remoteSync();
+  } catch {
+    /* sem rede: tenta de novo no próximo ciclo */
+  }
+  await refreshIdeas();
+}
+
+const currentSummary = computed(() => flatScenes().find((x) => x.id === scene.value?.id) ?? null);
+
+async function onIdeaScene(id: string) {
+  await reloadOutline();
+  await openScene(id);
+}
+
+const togglePanel = (p: "settings" | "versions" | "export" | "help" | "ideas") =>
   p === "versions" ? showVersions() : (panel.value = panel.value === p ? "none" : p);
 
 async function run(action: Action) {
@@ -184,6 +208,7 @@ async function run(action: Action) {
       case "export": togglePanel("export"); break;
       case "settings": togglePanel("settings"); break;
       case "help": togglePanel("help"); break;
+      case "ideas": togglePanel("ideas"); break;
       case "close": panel.value = "none"; break;
     }
   } catch (e) {
@@ -203,6 +228,7 @@ const when = (t: number) =>
   new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
 let unlistenClose: (() => void) | null = null;
+let syncTimer: ReturnType<typeof setInterval> | null = null;
 const unregisterFlusher = registerFlusher(flushSafely);
 const flushOnBlur = () => void flushSafely();
 
@@ -217,6 +243,8 @@ onMounted(async () => {
   } catch (e) {
     error.value = errorMessage(e);
   }
+  void backgroundSync();
+  syncTimer = setInterval(backgroundSync, 60_000);
   // Antes de a janela fechar, grava o pendente; se não conseguir, a janela não fecha.
   unlistenClose = await getCurrentWindow().onCloseRequested(handleCloseRequest);
 });
@@ -226,6 +254,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("blur", flushOnBlur);
   unlistenClose?.();
   unregisterFlusher();
+  if (syncTimer) clearInterval(syncTimer);
 });
 </script>
 
@@ -254,6 +283,9 @@ onBeforeUnmount(() => {
           <span class="dot" />{{ saveState === "erro" ? "Não salvo" : saveState === "salvando" ? "Salvando…" : "Salvo" }}
         </span>
         <nav class="tools" aria-label="Ferramentas">
+          <button :class="['link', { on: panel === 'ideas' }]" :title="hint('ideas')" @click="togglePanel('ideas')">
+            <IconBulb :size="18" stroke-width="1.75" /> Ideias<span v-if="newIdeas" class="badge">{{ newIdeas }}</span>
+          </button>
           <button :class="['link', { on: panel === 'versions' }]" :title="hint('versions')" @click="showVersions"><IconHistory :size="18" stroke-width="1.75" /> Versões</button>
           <button :class="['link', { on: panel === 'export' }]" :title="hint('export')" @click="panel = panel === 'export' ? 'none' : 'export'"><IconDownload :size="18" stroke-width="1.75" /> Exportar</button>
           <button :class="['link', { on: panel === 'settings' }]" :title="hint('settings')" @click="panel = panel === 'settings' ? 'none' : 'settings'"><IconAdjustmentsHorizontal :size="18" stroke-width="1.75" /> Ajustes</button>
@@ -287,6 +319,14 @@ onBeforeUnmount(() => {
 
       <SettingsPanel v-if="panel === 'settings'" @close="panel = 'none'" />
       <ShortcutsHelp v-if="panel === 'help'" @close="panel = 'none'" />
+      <InboxPanel
+        v-if="panel === 'ideas'"
+        :current="currentSummary"
+        :fallback-chapter-id="outline?.chapters[0]?.chapter.id ?? null"
+        @close="panel = 'none'"
+        @scene-created="onIdeaScene"
+        @changed="refreshIdeas"
+      />
 
       <aside v-if="panel === 'export'" class="versions" aria-label="Exportar o livro">
         <p class="hint">O livro inteiro, na ordem do sumário. Os títulos das cenas não saem no arquivo.</p>
@@ -352,6 +392,17 @@ onBeforeUnmount(() => {
 .bar .link:hover, .bar .link.on { background: rgba(255, 255, 255, 0.08); color: #fff; }
 .bar .icon { padding: 0 0.5rem; }
 .tools { display: flex; gap: 0.15rem; }
+.badge {
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--ribbon);
+  color: #fff;
+  font-size: 0.7rem;
+  line-height: 1.15rem;
+  text-align: center;
+}
 .scene-title {
   flex: 1;
   min-width: 0;

@@ -204,6 +204,8 @@ const currentChapterTitle = computed(
   () => outline.value?.chapters.find((c) => c.chapter.id === scene.value?.chapter_id)?.chapter.title ?? "",
 );
 
+const sceneTitles = computed(() => Object.fromEntries(flatScenes().map((s) => [s.id, s.title])));
+
 const currentSummary = computed(() => flatScenes().find((x) => x.id === scene.value?.id) ?? null);
 
 async function onIdeaScene(id: string) {
@@ -376,6 +378,7 @@ onBeforeUnmount(() => {
       :book-id="bookId"
       :scene-id="scene?.id ?? null"
       :mode="outline.book.ai_mode"
+      :scene-titles="sceneTitles"
       @close="toggleAssistant"
       @open-scene="openScene"
     />

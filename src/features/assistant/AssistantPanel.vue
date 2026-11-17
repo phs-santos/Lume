@@ -3,9 +3,10 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 import { IconX } from "@tabler/icons-vue";
 import { aiEnable, aiFirstPass, aiFirstPassCancel, aiKeyStatus, aiPendingCount } from "../../lib/api";
 import type { Proposal } from "../../lib/types";
+import BibleView from "./BibleView.vue";
 import ChatView from "./ChatView.vue";
 
-const props = defineProps<{ bookId: string; sceneId: string | null; mode: string }>();
+const props = defineProps<{ bookId: string; sceneId: string | null; mode: string; sceneTitles: Record<string, string> }>();
 const emit = defineEmits<{
   close: [];
   openScene: [id: string];
@@ -73,7 +74,7 @@ function cancelReading() {
       @proposal-as-scene="emit('proposalAsScene', $event)"
       @discard-proposal="emit('discardProposal', $event)"
     />
-    <slot v-if="tab === 'bible'" name="bible" />
+    <BibleView v-if="tab === 'bible'" :book-id="bookId" :scene-titles="sceneTitles" @open-scene="emit('openScene', $event)" />
   </aside>
 </template>
 

@@ -4,6 +4,7 @@ use crate::vault::MasterKey;
 use rusqlite::Connection;
 use std::path::Path;
 
+pub mod ai;
 pub mod books;
 pub mod inbox;
 pub mod scenes;
@@ -115,6 +116,62 @@ CREATE TABLE inbox(
   received_at INTEGER NOT NULL,
   status TEXT NOT NULL CHECK(status IN('nova','arquivada'))
 );
+"#, r#"
+CREATE TABLE ai_scene_digest(
+  scene_id TEXT PRIMARY KEY REFERENCES scenes(id) ON DELETE CASCADE,
+  content_hash TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE bible_entries(
+  id TEXT PRIMARY KEY,
+  book_id TEXT NOT NULL REFERENCES books(id),
+  kind TEXT NOT NULL CHECK(kind IN('personagem','lugar','fato','linha_do_tempo')),
+  name TEXT NOT NULL,
+  aliases_json TEXT NOT NULL DEFAULT '[]',
+  body TEXT NOT NULL,
+  ai_notes_json TEXT NOT NULL DEFAULT '[]',
+  story_order INTEGER,
+  source_scene_id TEXT REFERENCES scenes(id) ON DELETE SET NULL,
+  edited_by_user INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE ai_conversations(
+  id TEXT PRIMARY KEY,
+  book_id TEXT NOT NULL REFERENCES books(id),
+  title TEXT NOT NULL,
+  rolling_summary TEXT NOT NULL DEFAULT '',
+  folded_count INTEGER NOT NULL DEFAULT 0,
+  closed INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE ai_messages(
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK(role IN('user','assistant','note')),
+  content TEXT NOT NULL,
+  tool_name TEXT,
+  created_at INTEGER NOT NULL,
+  seq INTEGER NOT NULL
+);
+CREATE TABLE ai_proposals(
+  id TEXT PRIMARY KEY,
+  book_id TEXT NOT NULL REFERENCES books(id),
+  conversation_id TEXT REFERENCES ai_conversations(id) ON DELETE SET NULL,
+  scene_id TEXT REFERENCES scenes(id) ON DELETE SET NULL,
+  text TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN('pendente','inserida','virou_cena','descartada')),
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE ai_usage(
+  month TEXT NOT NULL,
+  model TEXT NOT NULL,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cost REAL,
+  PRIMARY KEY(month, model)
+);
 "#];
 
 pub fn open(path: &Path, key: &MasterKey) -> Result<Connection, DbError> {
@@ -177,7 +234,7 @@ mod tests {
         let t: String = c.query_row("SELECT title FROM books", [], |r| r.get(0)).unwrap();
         assert_eq!(t, "Livro antigo");
         let v: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 2);
+        assert_eq!(v, MIGRATIONS.len() as i64);
         c.execute("SELECT count(*) FROM inbox", []).ok();
     }
 

@@ -22,6 +22,7 @@ const handlers: Record<string, (a: any) => any> = {
   vault_unlock: ({ password }) => { if (password !== "senha123") throw "WRONG_PASSWORD"; status = "unlocked"; },
   vault_recover: () => { status = "unlocked"; },
   vault_lock: () => { status = "locked"; },
+  vault_nickname: () => (status === "none" ? null : "henrilgrim"),
   book_list: () => db.books,
   book_create: ({ title, aiMode }) => {
     const b = { id: id(), title, ai_mode: aiMode, created_at: Date.now() };

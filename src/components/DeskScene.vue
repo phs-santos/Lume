@@ -67,14 +67,14 @@ withDefaults(defineProps<{ time: TimeOfDay; crop?: "bottom" | "middle" }>(), { c
     </g>
 
     <!-- luz da luminária (só à noite) -->
-    <path v-if="time === 'noite'" d="M352 468 L540 418 L860 800 H200 Z" fill="url(#glow)" class="lamp-light" />
+    <path v-if="time === 'noite'" d="M352 468 L540 418 L860 800 H200 Z" fill="url(#glow)" class="lamp-light" transform="translate(-120 0)" />
 
     <!-- mesa -->
     <rect x="0" y="800" width="1600" height="200" class="desk" />
     <rect x="0" y="790" width="1600" height="22" rx="4" class="desk-top" />
 
     <!-- luminária -->
-    <g class="lamp">
+    <g class="lamp" transform="translate(-120 0)">
       <rect x="250" y="772" width="180" height="24" rx="12" class="lamp-metal" />
       <path d="M340 774 L300 590 L410 430" class="lamp-arm" />
       <circle cx="300" cy="590" r="13" class="lamp-metal" />
@@ -125,7 +125,7 @@ withDefaults(defineProps<{ time: TimeOfDay; crop?: "bottom" | "middle" }>(), { c
 .tarde {
   --wall: #e9ddd0; --wall-shade: #dccdbd; --frame: #c4ad96; --sky-top: #f0a26b; --sky-bottom: #f7d39b;
   --city: #b07c62; --desk: #7a5641; --desk-top: #946a50; --paper: #fbfbfb; --paper-under: #e4e4e4;
-  --curtain: #b42318; --art-bg: #f0d9b5; --art-hill: #c98b5f; --art-sun: #b42318;
+  --curtain: #3f6f6a; --art-bg: #f0d9b5; --art-hill: #c98b5f; --art-sun: #b42318;
   --cup: #ffffff; --steam: rgba(120, 90, 70, 0.25); --metal: #5b4334;
   --b1: #1c2333; --b2: #2f5d50; --b3: #b42318;
 }

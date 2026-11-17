@@ -8,6 +8,7 @@ export const vaultUnlock = (password: string) => invoke<void>("vault_unlock", { 
 export const vaultRecover = (phrase: string, newPassword: string) =>
   invoke<void>("vault_recover", { phrase, newPassword });
 export const vaultLock = () => invoke<void>("vault_lock");
+export const vaultNickname = () => invoke<string | null>("vault_nickname");
 
 export const bookList = () => invoke<Book[]>("book_list");
 export const bookCreate = (title: string, aiMode: AiMode) => invoke<Book>("book_create", { title, aiMode });

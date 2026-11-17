@@ -47,32 +47,47 @@ const editor = useEditor({
 });
 
 onBeforeUnmount(() => editor.value?.destroy());
+
+/** A roda do mouse sobre a mesa (fora da folha) também rola a folha. */
+function forwardWheel(e: WheelEvent) {
+  const box = scroller.value;
+  if (box && !box.contains(e.target as Node)) box.scrollTop += e.deltaY;
+}
 </script>
 
 <template>
-  <div ref="scroller" :class="['typewriter', { focus: focusMode }]">
-    <EditorContent :editor="editor" class="page" />
+  <div :class="['typewriter', { focus: focusMode }]" @wheel.passive="forwardWheel">
+    <div ref="scroller" class="sheet">
+      <EditorContent :editor="editor" class="page" />
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* A mesa fica parada; só a folha rola. */
 .typewriter {
   height: 100%;
-  overflow-y: auto;
-  scrollbar-width: thin;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
   background: var(--desk);
   padding: 0 1.5rem;
 }
 /* A folha: uma tira contínua de papel, como saindo do rolo da máquina. */
-.page {
+.sheet {
+  width: 100%;
   max-width: calc(68ch + 9rem);
-  min-height: 100%;
-  margin: 0 auto;
-  /* meia tela de folga em cima e embaixo: a primeira e a última linha também chegam ao centro */
-  padding: 50vh clamp(1.5rem, 6vw, 4.5rem);
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--ink) 25%, transparent) transparent;
   background: var(--sheet);
   box-shadow: 0 0 0 1px rgba(28, 35, 51, 0.05), 0 20px 50px -24px rgba(28, 35, 51, 0.35);
 }
+.sheet:not(:hover) { scrollbar-color: transparent transparent; }
+/* meia tela de folga em cima e embaixo: a primeira e a última linha também chegam ao centro */
+.page { padding: 50vh clamp(1.5rem, 6vw, 4.5rem); }
 .page :deep(.ProseMirror) {
   font-family: var(--font-text);
   font-size: 1.15rem;

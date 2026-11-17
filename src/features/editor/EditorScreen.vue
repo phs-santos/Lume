@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { IconAdjustmentsHorizontal, IconArrowLeft, IconDownload, IconHistory, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-vue";
+import { IconAdjustmentsHorizontal, IconArrowLeft, IconDownload, IconHistory, IconKeyboard, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand } from "@tabler/icons-vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
@@ -7,13 +7,15 @@ import { toDocx } from "../../lib/export/docx";
 import { toMarkdown } from "../../lib/export/markdown";
 import type { ExportBook } from "../../lib/export/types";
 import { onBeforeUnmount, onMounted, ref } from "vue";
-import { bookOutline, sceneGet, sceneRename, sceneRestore, sceneSave, sceneVersions } from "../../lib/api";
+import { bookOutline, chapterCreate, sceneCreate, sceneGet, sceneRename, sceneRestore, sceneSave, sceneVersions } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 import type { Outline as OutlineT, Scene, Version } from "../../lib/types";
 import Outline from "./Outline.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import Typewriter from "./Typewriter.vue";
-import { loadPrefs, prefs } from "./settings";
+import { loadPrefs, prefs, setPref } from "./settings";
+import ShortcutsHelp from "./ShortcutsHelp.vue";
+import { isMac, label, matchShortcut, SHORTCUTS, type Action } from "./shortcuts";
 import { useAutosave } from "./useAutosave";
 import { handleCloseRequest, registerFlusher } from "./exitGuard";
 
@@ -23,7 +25,9 @@ const emit = defineEmits<{ close: [] }>();
 const outline = ref<OutlineT | null>(null);
 const scene = ref<Scene | null>(null);
 const sidebar = ref(true);
-const panel = ref<"none" | "settings" | "versions" | "export">("none");
+const panel = ref<"none" | "settings" | "versions" | "export" | "help">("none");
+const mac = isMac();
+const hint = (a: Action) => label(SHORTCUTS.find((s) => s.action === a)!, mac);
 const exportMsg = ref("");
 const versions = ref<Version[]>([]);
 const error = ref("");
@@ -131,11 +135,65 @@ async function back() {
   if (await flushSafely()) emit("close");
 }
 
-function onKey(e: KeyboardEvent) {
-  if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
-    e.preventDefault();
-    sidebar.value = !sidebar.value;
+/** Cenas do livro na ordem do sumário. */
+const flatScenes = () => outline.value?.chapters.flatMap((c) => c.scenes) ?? [];
+
+async function newSceneAfterCurrent() {
+  const cur = flatScenes().find((x) => x.id === scene.value?.id);
+  const ch = cur?.chapter_id ?? outline.value?.chapters[outline.value.chapters.length - 1]?.chapter.id;
+  if (!ch) return;
+  const count = outline.value!.chapters.find((c) => c.chapter.id === ch)!.scenes.length;
+  const s = await sceneCreate(ch, `Cena ${count + 1}`, cur ? cur.position + 1 : undefined);
+  await reloadOutline();
+  await openScene(s.id);
+}
+
+async function newChapter() {
+  if (!outline.value) return;
+  const ch = await chapterCreate(props.bookId, `Capítulo ${outline.value.chapters.length + 1}`);
+  const s = await sceneCreate(ch.id, "Cena 1");
+  await reloadOutline();
+  await openScene(s.id);
+}
+
+async function stepScene(delta: 1 | -1) {
+  const list = flatScenes();
+  const i = list.findIndex((x) => x.id === scene.value?.id);
+  const next = list[i + delta];
+  if (next) await openScene(next.id);
+}
+
+const togglePanel = (p: "settings" | "versions" | "export" | "help") =>
+  p === "versions" ? showVersions() : (panel.value = panel.value === p ? "none" : p);
+
+async function run(action: Action) {
+  try {
+    switch (action) {
+      case "save": await flushSafely(); break;
+      case "newScene": await newSceneAfterCurrent(); break;
+      case "newChapter": await newChapter(); break;
+      case "nextScene": await stepScene(1); break;
+      case "prevScene": await stepScene(-1); break;
+      case "toggleSidebar": sidebar.value = !sidebar.value; break;
+      case "toggleFocus": await setPref("focus", prefs.focus === "on" ? "off" : "on"); break;
+      case "toggleTheme": await setPref("theme", prefs.theme === "escuro" ? "papel" : "escuro"); break;
+      case "versions": await togglePanel("versions"); break;
+      case "export": togglePanel("export"); break;
+      case "settings": togglePanel("settings"); break;
+      case "help": togglePanel("help"); break;
+      case "close": panel.value = "none"; break;
+    }
+  } catch (e) {
+    error.value = errorMessage(e);
   }
+}
+
+function onKey(e: KeyboardEvent) {
+  const action = matchShortcut(e, mac);
+  if (!action) return;
+  if (action === "close" && panel.value === "none") return; // Esc sem painel: deixa para o editor
+  e.preventDefault();
+  void run(action);
 }
 
 const when = (t: number) =>
@@ -180,8 +238,8 @@ onBeforeUnmount(() => {
 
     <main class="desk">
       <header class="bar">
-        <button class="link" title="Voltar aos livros" @click="back"><IconArrowLeft :size="18" stroke-width="1.75" /> Livros</button>
-        <button class="link icon" :title="sidebar ? 'Esconder sumário (Cmd+\\)' : 'Mostrar sumário (Cmd+\\)'" :aria-label="sidebar ? 'Esconder sumário' : 'Mostrar sumário'" @click="sidebar = !sidebar">
+        <button class="link" title="Voltar à biblioteca" @click="back"><IconArrowLeft :size="18" stroke-width="1.75" /> Livros</button>
+        <button class="link icon" :title="`${sidebar ? 'Esconder' : 'Mostrar'} sumário (${hint('toggleSidebar')})`" :aria-label="sidebar ? 'Esconder sumário' : 'Mostrar sumário'" @click="sidebar = !sidebar">
           <IconLayoutSidebarLeftCollapse v-if="sidebar" :size="18" stroke-width="1.75" />
           <IconLayoutSidebarLeftExpand v-else :size="18" stroke-width="1.75" />
         </button>
@@ -197,9 +255,10 @@ onBeforeUnmount(() => {
           <span class="dot" />{{ saveState === "erro" ? "Não salvo" : saveState === "salvando" ? "Salvando…" : "Salvo" }}
         </span>
         <nav class="tools" aria-label="Ferramentas">
-          <button :class="['link', { on: panel === 'versions' }]" @click="showVersions"><IconHistory :size="18" stroke-width="1.75" /> Versões</button>
-          <button :class="['link', { on: panel === 'export' }]" @click="panel = panel === 'export' ? 'none' : 'export'"><IconDownload :size="18" stroke-width="1.75" /> Exportar</button>
-          <button :class="['link', { on: panel === 'settings' }]" @click="panel = panel === 'settings' ? 'none' : 'settings'"><IconAdjustmentsHorizontal :size="18" stroke-width="1.75" /> Ajustes</button>
+          <button :class="['link', { on: panel === 'versions' }]" :title="hint('versions')" @click="showVersions"><IconHistory :size="18" stroke-width="1.75" /> Versões</button>
+          <button :class="['link', { on: panel === 'export' }]" :title="hint('export')" @click="panel = panel === 'export' ? 'none' : 'export'"><IconDownload :size="18" stroke-width="1.75" /> Exportar</button>
+          <button :class="['link', { on: panel === 'settings' }]" :title="hint('settings')" @click="panel = panel === 'settings' ? 'none' : 'settings'"><IconAdjustmentsHorizontal :size="18" stroke-width="1.75" /> Ajustes</button>
+          <button class="link icon" :title="`Atalhos (${hint('help')})`" aria-label="Atalhos de teclado" @click="panel = 'help'"><IconKeyboard :size="18" stroke-width="1.75" /></button>
         </nav>
       </header>
 
@@ -217,6 +276,7 @@ onBeforeUnmount(() => {
       <p v-else-if="outline" class="empty">Crie uma cena no sumário para começar.</p>
 
       <SettingsPanel v-if="panel === 'settings'" @close="panel = 'none'" />
+      <ShortcutsHelp v-if="panel === 'help'" @close="panel = 'none'" />
 
       <aside v-if="panel === 'export'" class="versions" aria-label="Exportar o livro">
         <p class="hint">O livro inteiro, na ordem do sumário. Os títulos das cenas não saem no arquivo.</p>
@@ -243,9 +303,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.editor { display: grid; grid-template-columns: 17rem 1fr; height: 100%; }
+.editor { display: grid; grid-template-columns: 17rem minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; overflow: hidden; }
 .editor.no-sidebar { grid-template-columns: 1fr; }
-.desk { position: relative; display: flex; flex-direction: column; min-width: 0; height: 100%; }
+.desk { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
 .bar {
   display: flex;
   align-items: center;

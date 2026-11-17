@@ -32,6 +32,7 @@ pub fn run() {
             commands::vault_unlock,
             commands::vault_recover,
             commands::vault_lock,
+            commands::vault_nickname,
             commands::book_list,
             commands::book_create,
             commands::book_rename,

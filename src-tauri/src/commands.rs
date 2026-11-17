@@ -67,6 +67,16 @@ pub fn recover_vault(s: &AppState, phrase: &str, new_password: &str) -> CmdResul
     vault::save(&s.vault_path(), &nv).map_err(err)
 }
 
+/// Apelido do cofre (fica em texto puro no vault.json; não é segredo). `None` sem cofre.
+pub fn vault_nickname_of(s: &AppState) -> CmdResult<Option<String>> {
+    Ok(vault::load(&s.vault_path()).map_err(err)?.map(|v| v.nickname))
+}
+
+#[tauri::command]
+pub fn vault_nickname(state: State<AppState>) -> CmdResult<Option<String>> {
+    vault_nickname_of(&state)
+}
+
 pub fn lock_vault(s: &AppState) {
     *s.db.lock().unwrap() = None;
 }
@@ -183,6 +193,15 @@ mod tests {
         let (_d, s) = state();
         std::fs::write(s.db_path(), b"x").unwrap();
         assert_eq!(status(&s), "missing_vault");
+    }
+
+    #[test]
+    fn nickname_is_readable_while_locked() {
+        let (_d, s) = state();
+        assert_eq!(vault_nickname_of(&s).unwrap(), None);
+        create_vault(&s, "henri", "x").unwrap();
+        lock_vault(&s);
+        assert_eq!(vault_nickname_of(&s).unwrap().as_deref(), Some("henri"));
     }
 
     #[test]

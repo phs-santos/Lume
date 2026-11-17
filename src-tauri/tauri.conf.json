@@ -13,7 +13,7 @@
     "windows": [
       {
         "title": "Lume",
-        "width": 1200, "minWidth": 720,
+        "width": 1200, "minWidth": 720, "maximized": true,
         "height": 820, "minHeight": 560
       }
     ],

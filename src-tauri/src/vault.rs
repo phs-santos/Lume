@@ -55,7 +55,7 @@ fn random<const N: usize>() -> [u8; N] {
     b
 }
 
-fn kdf(secret: &[u8], salt: &[u8]) -> Result<[u8; 32], VaultError> {
+pub(crate) fn kdf(secret: &[u8], salt: &[u8]) -> Result<[u8; 32], VaultError> {
     use argon2::{Algorithm, Argon2, Params, Version};
     let params = Params::new(KDF_M_KIB, KDF_T, KDF_P, Some(32)).map_err(|_| VaultError::Crypto)?;
     let mut out = [0u8; 32];

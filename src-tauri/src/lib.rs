@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod db;
+pub mod remote;
 pub mod state;
 pub mod vault;
 

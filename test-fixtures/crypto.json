@@ -1,0 +1,9 @@
+{
+  "password": "lume-teste-ção",
+  "salt": "AwoRGB8mLTQ7QklQV15lbA==",
+  "login_secret": "ZT/ydZ9dea9FhPV4sssAKnEthz8OUYeASS7RJjyrr5k=",
+  "secret_key": "8gomE728zpkNChJNb8S/lzGdDMzz9nosP+V1tbmYZNI=",
+  "public_key": "VcBQbHAjPwHDJjO6aDuQmcTUrbIJoEbDRwt4eI7DwT8=",
+  "plaintext": "SWRlaWE6IE1hcmluYSBhYnJlIGEgY2FydGEgbmEgc2VycmEu",
+  "sealed": "kAPum6yect48hOuYKgQhqIPcZu3cDbPRbsKfnLaJ4iD3B7hd1gZ1Ks+P9zL2H3gxt6F6IZieWIin04Rp5KmKCHabHMol0Q9qndoTGYi/vf8znxPh"
+}

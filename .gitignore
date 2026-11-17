@@ -25,3 +25,8 @@ dist-ssr
 
 .superpowers/
 .local/
+capture/node_modules/
+capture/dist/
+server/node_modules/
+server/dist/
+server/.env

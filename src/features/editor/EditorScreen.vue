@@ -7,7 +7,7 @@ import { toDocx } from "../../lib/export/docx";
 import { toMarkdown } from "../../lib/export/markdown";
 import type { ExportBook } from "../../lib/export/types";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { bookOutline, chapterCreate, inboxList, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRename, sceneRestore, sceneSave, sceneVersions } from "../../lib/api";
+import { bookOutline, chapterCreate, inboxList, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRestore, sceneSave, sceneVersions } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 import type { Outline as OutlineT, Scene, Version } from "../../lib/types";
 import Outline from "./Outline.vue";
@@ -74,6 +74,9 @@ async function flushSafely() {
 
 async function reloadOutline() {
   outline.value = await bookOutline(props.bookId);
+  // a cena pode ter sido renomeada no sumário
+  const t = outline.value.chapters.flatMap((c) => c.scenes).find((x) => x.id === scene.value?.id)?.title;
+  if (scene.value && t) scene.value.title = t;
 }
 
 async function openScene(id: string) {
@@ -81,14 +84,6 @@ async function openScene(id: string) {
   if (!(await flushSafely())) return;
   scene.value = await sceneGet(id);
   panel.value = "none";
-}
-
-async function renameScene(e: Event) {
-  const t = (e.target as HTMLInputElement).value.trim();
-  if (!scene.value || !t || t === scene.value.title) return;
-  await sceneRename(scene.value.id, t);
-  scene.value.title = t;
-  await reloadOutline();
 }
 
 async function showVersions() {
@@ -270,29 +265,22 @@ onBeforeUnmount(() => {
           <span class="book-words">{{ totalWords.toLocaleString("pt-BR") }} palavras</span>
         </div>
         <div class="bar-main">
-        <button class="link" title="Voltar à biblioteca" @click="back"><IconArrowLeft :size="18" stroke-width="1.75" /> Livros</button>
+        <button class="link icon" title="Voltar à biblioteca" aria-label="Voltar à biblioteca" @click="back"><IconArrowLeft :size="18" stroke-width="1.75" /></button>
         <button class="link icon" :title="`${sidebar ? 'Esconder' : 'Mostrar'} sumário (${hint('toggleSidebar')})`" :aria-label="sidebar ? 'Esconder sumário' : 'Mostrar sumário'" @click="sidebar = !sidebar">
           <IconLayoutSidebarLeftCollapse v-if="sidebar" :size="18" stroke-width="1.75" />
           <IconLayoutSidebarLeftExpand v-else :size="18" stroke-width="1.75" />
         </button>
-        <input
-          v-if="scene"
-          class="scene-title"
-          :value="scene.title"
-          aria-label="Título da cena"
-          @blur="renameScene"
-          @keydown.enter="($event.target as HTMLInputElement).blur()"
-        />
+        <span class="spacer" />
         <span class="status" :class="saveState" role="status">
           <span class="dot" />{{ saveState === "erro" ? "Não salvo" : saveState === "salvando" ? "Salvando…" : "Salvo" }}
         </span>
         <nav class="tools" aria-label="Ferramentas">
-          <button :class="['link', { on: panel === 'ideas' }]" :title="hint('ideas')" @click="togglePanel('ideas')">
-            <IconBulb :size="18" stroke-width="1.75" /> Ideias<span v-if="newIdeas" class="badge">{{ newIdeas }}</span>
+          <button :class="['link', 'icon', { on: panel === 'ideas' }]" :title="`Ideias (${hint('ideas')})`" aria-label="Ideias" @click="togglePanel('ideas')">
+            <IconBulb :size="18" stroke-width="1.75" /><span v-if="newIdeas" class="badge">{{ newIdeas }}</span>
           </button>
-          <button :class="['link', { on: panel === 'versions' }]" :title="hint('versions')" @click="showVersions"><IconHistory :size="18" stroke-width="1.75" /> Versões</button>
-          <button :class="['link', { on: panel === 'export' }]" :title="hint('export')" @click="panel = panel === 'export' ? 'none' : 'export'"><IconDownload :size="18" stroke-width="1.75" /> Exportar</button>
-          <button :class="['link', { on: panel === 'settings' }]" :title="hint('settings')" @click="panel = panel === 'settings' ? 'none' : 'settings'"><IconAdjustmentsHorizontal :size="18" stroke-width="1.75" /> Ajustes</button>
+          <button :class="['link', 'icon', { on: panel === 'versions' }]" :title="`Versões (${hint('versions')})`" aria-label="Versões" @click="showVersions"><IconHistory :size="18" stroke-width="1.75" /></button>
+          <button :class="['link', 'icon', { on: panel === 'export' }]" :title="`Exportar (${hint('export')})`" aria-label="Exportar" @click="panel = panel === 'export' ? 'none' : 'export'"><IconDownload :size="18" stroke-width="1.75" /></button>
+          <button :class="['link', 'icon', { on: panel === 'settings' }]" :title="`Ajustes (${hint('settings')})`" aria-label="Ajustes" @click="panel = panel === 'settings' ? 'none' : 'settings'"><IconAdjustmentsHorizontal :size="18" stroke-width="1.75" /></button>
           <button class="link icon" :title="`Atalhos (${hint('help')})`" aria-label="Atalhos de teclado" @click="panel = 'help'"><IconKeyboard :size="18" stroke-width="1.75" /></button>
         </nav>
         </div>
@@ -397,6 +385,7 @@ onBeforeUnmount(() => {
 .bar .link:hover, .bar .link.on { background: rgba(255, 255, 255, 0.08); color: #fff; }
 .bar .icon { padding: 0 0.5rem; }
 .tools { display: flex; gap: 0.15rem; }
+.spacer { flex: 1; }
 .badge {
   min-width: 1.15rem;
   height: 1.15rem;
@@ -408,18 +397,6 @@ onBeforeUnmount(() => {
   line-height: 1.15rem;
   text-align: center;
 }
-.scene-title {
-  flex: 1;
-  min-width: 0;
-  padding: 0.35rem 0.6rem;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: none;
-  font: 400 1rem var(--font-mono);
-  color: #fff;
-}
-.scene-title:hover { border-color: rgba(255, 255, 255, 0.15); }
-.scene-title:focus { outline: none; border-color: rgba(255, 255, 255, 0.35); }
 .status { display: inline-flex; align-items: center; gap: 0.4rem; color: #8b919c; font-size: 0.78rem; padding: 0 0.5rem; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: #3c8a5f; }
 .status.salvando .dot { background: #c99a2e; }

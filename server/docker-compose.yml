@@ -1,0 +1,15 @@
+services:
+  lume:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    container_name: lume
+    env_file: .env
+    ports:
+      - "127.0.0.1:3020:3020"
+    volumes:
+      - lume-data:/data
+    restart: unless-stopped
+
+volumes:
+  lume-data: {}

@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+src-tauri
+.git
+.superpowers
+.local
+design
+docs
+server/.env

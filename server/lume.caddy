@@ -1,0 +1,5 @@
+# Lume — caixa de entrada de ideias (contêiner em /root/lume/server)
+lume.codexolimpo.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:3020
+}

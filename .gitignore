@@ -30,3 +30,4 @@ capture/dist/
 server/node_modules/
 server/dist/
 server/.env
+server/data/

@@ -9,7 +9,12 @@ describe("audioBlob", () => {
     expect(new Uint8Array(await b.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
   });
 
-  it("aceita o corpo como lista de números (como chega do Rust)", async () => {
+  it("aceita ArrayBuffer (bytes crus vindos do Rust)", async () => {
+    const b = audioBlob(new Uint8Array([7, 8]).buffer, "audio/webm");
+    expect(new Uint8Array(await b.arrayBuffer())).toEqual(new Uint8Array([7, 8]));
+  });
+
+  it("aceita o corpo como lista de números", async () => {
     const b = audioBlob([4, 5], "audio/mp4");
     expect(new Uint8Array(await b.arrayBuffer())).toEqual(new Uint8Array([4, 5]));
   });

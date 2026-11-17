@@ -6,7 +6,7 @@ HOST="${1:-vps}"
 cd "$(dirname "$0")/.."
 
 ssh "$HOST" "mkdir -p /root/lume"
-rsync -az --delete --exclude node_modules --exclude dist --exclude .env ./server/ "$HOST:/root/lume/server/"
+rsync -az --delete --exclude node_modules --exclude dist --exclude .env --exclude data ./server/ "$HOST:/root/lume/server/"
 rsync -az --delete --exclude node_modules --exclude dist ./capture/ "$HOST:/root/lume/capture/"
 rsync -az ./test-fixtures/ "$HOST:/root/lume/test-fixtures/"
 rsync -az --relative ./src/components/DeskScene.vue ./src/lib/timeOfDay.ts "$HOST:/root/lume/"

@@ -13,6 +13,8 @@ export type ErrorCode =
   | "WRONG_KEY"
   | "NOT_FOUND"
   | "NOT_CONNECTED"
+  | "NOT_AUTHENTICATED"
+  | "KEY_MISMATCH"
   | "NOT_TEXT";
 
 export interface Book { id: string; title: string; ai_mode: AiMode; created_at: number }

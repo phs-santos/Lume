@@ -43,7 +43,7 @@ export const remoteConnect = (url: string, nickname: string, password: string, i
 export const remoteDisconnect = () => invoke<void>("remote_disconnect");
 export const remoteSync = () => invoke<number>("remote_sync");
 export const inboxList = () => invoke<InboxItem[]>("inbox_list");
-export const inboxBody = (id: string) => invoke<number[]>("inbox_body", { id });
+export const inboxBody = (id: string) => invoke<ArrayBuffer>("inbox_body", { id });
 export const inboxArchive = (id: string) => invoke<void>("inbox_archive", { id });
 export const inboxRestore = (id: string) => invoke<void>("inbox_restore", { id });
 export const inboxDelete = (id: string) => invoke<void>("inbox_delete", { id });

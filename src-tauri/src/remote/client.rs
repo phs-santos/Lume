@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use std::time::Duration;
 
 fn client() -> Client {
-    Client::builder().timeout(Duration::from_secs(60)).build().expect("cliente http")
+    Client::builder().connect_timeout(Duration::from_secs(15)).timeout(Duration::from_secs(600)).build().expect("cliente http")
 }
 
 fn net(e: reqwest::Error) -> RemoteError {
@@ -40,7 +40,7 @@ pub fn register(url: &str, nickname: &str, invite: &str, salt: &[u8], secret: &[
 }
 
 pub fn login(url: &str, nickname: &str, secret: &[u8]) -> Result<String, RemoteError> {
-    let body = json!({"nickname": nickname, "secret": STANDARD.encode(secret)});
+    let body = json!({"nickname": nickname, "secret": STANDARD.encode(secret), "scope": "full"});
     let v: Value = check(client().post(format!("{}/api/sessions", base(url))).json(&body).send().map_err(net)?)?.json().map_err(net)?;
     Ok(v["token"].as_str().unwrap_or_default().to_string())
 }
@@ -75,5 +75,14 @@ impl InboxApi for HttpApi {
     fn delete(&self, id: &str) -> Result<(), RemoteError> {
         check(client().delete(format!("{}/api/inbox/{id}", base(&self.url))).bearer_auth(&self.token).send().map_err(net)?)?;
         Ok(())
+    }
+    fn public_key(&self) -> Result<Option<[u8; 32]>, RemoteError> {
+        let r = client().get(format!("{}/api/accounts/me/public-key", base(&self.url))).bearer_auth(&self.token).send().map_err(net)?;
+        if r.status().as_u16() == 404 {
+            return Ok(None);
+        }
+        let v: Value = check(r)?.json().map_err(net)?;
+        let bytes = STANDARD.decode(v["public_key"].as_str().unwrap_or_default()).map_err(|e| RemoteError::Local(e.to_string()))?;
+        Ok(bytes.try_into().ok())
     }
 }

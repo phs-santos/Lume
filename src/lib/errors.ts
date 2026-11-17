@@ -11,6 +11,9 @@ const messages: Record<ErrorCode, string> = {
   WRONG_KEY: "Este cofre não abre o livro guardado neste computador. Os arquivos podem ter sido trocados.",
   NOT_FOUND: "Não encontrei isso. Talvez já tenha sido apagado.",
   NOT_CONNECTED: "Este computador ainda não está conectado ao celular.",
+  NOT_AUTHENTICATED: "A conexão com o celular expirou. Entre de novo para continuar recebendo ideias.",
+  KEY_MISMATCH:
+    "O servidor está entregando ao celular uma chave que não é a deste computador. Conecte este computador de novo antes de gravar mais ideias.",
   NOT_TEXT: "Só ideias escritas viram cena por enquanto. Áudio vai ganhar transcrição em breve.",
 };
 
@@ -18,6 +21,8 @@ const messages: Record<ErrorCode, string> = {
 export function errorMessage(e: unknown): string {
   const s = String(e);
   if (s.startsWith("NETWORK")) return "Sem conexão com o servidor. Confira a internet e tente de novo.";
+  if (s.startsWith("UNDECRYPTABLE"))
+    return "Algumas ideias foram cifradas para outra chave e não podem ser abertas aqui. No celular, saia e entre de novo.";
   if (s.startsWith("SYNC_PARTIAL")) return "Algumas ideias não chegaram. Vou tentar de novo daqui a pouco.";
   return (messages as Record<string, string>)[s] ?? (/^[A-ZÁ-Ú]/.test(s) && !s.includes("_") ? s : `Algo deu errado: ${s}`);
 }

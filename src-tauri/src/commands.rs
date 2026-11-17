@@ -198,11 +198,18 @@ pub fn remote_disconnect(state: State<AppState>) -> CmdResult<()> {
     remote::forget_session(c).map_err(err)
 }
 
+/// Só uma sincronização por vez (o painel e o ciclo de fundo podem pedir juntos).
+static SYNCING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Busca as ideias novas no servidor. Devolve quantas chegaram.
 #[tauri::command]
 pub async fn remote_sync(state: State<'_, AppState>) -> CmdResult<usize> {
+    use std::sync::atomic::Ordering;
+    if SYNCING.swap(true, Ordering::SeqCst) {
+        return Ok(0);
+    }
     let db = state.db.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let r = tauri::async_runtime::spawn_blocking(move || {
         let (cfg, kp) = {
             let g = db.lock().unwrap();
             let c = g.as_ref().ok_or_else(|| "LOCKED".to_string())?;
@@ -211,14 +218,27 @@ pub async fn remote_sync(state: State<'_, AppState>) -> CmdResult<usize> {
             (cfg, kp)
         };
         let api = HttpApi { url: cfg.url, token: cfg.token };
-        sync::sync(&SharedLocal(db.clone()), &api, &kp, now_ms()).map_err(err)
+        sync::sync(&SharedLocal(db.clone()), &api, &kp, now_ms()).map_err(|e| {
+            let g = db.lock().unwrap();
+            match g.as_ref() {
+                Some(c) => remote::sync_error_code(c, &e),
+                None => e.to_string(),
+            }
+        })
     })
     .await
-    .map_err(err)?
+    .map_err(err);
+    SYNCING.store(false, Ordering::SeqCst);
+    r?
+}
+
+/// Áudio vai como bytes crus (não como lista JSON de números), para não travar a tela.
+#[tauri::command]
+pub fn inbox_body(state: State<AppState>, id: String) -> CmdResult<tauri::ipc::Response> {
+    with_db(&state, |c| inbox::inbox_body(c, &id)).map(tauri::ipc::Response::new)
 }
 
 db_cmd!(inbox_list() -> Vec<InboxItem> => |c| inbox::inbox_list(c));
-db_cmd!(inbox_body(id: String) -> Vec<u8> => |c| inbox::inbox_body(c, &id));
 db_cmd!(inbox_archive(id: String) -> () => |c| inbox::inbox_set_status(c, &id, "arquivada"));
 db_cmd!(inbox_restore(id: String) -> () => |c| inbox::inbox_set_status(c, &id, "nova"));
 db_cmd!(inbox_delete(id: String) -> () => |c| inbox::inbox_delete(c, &id));

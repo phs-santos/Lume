@@ -3,6 +3,8 @@ import type { DatabaseSync } from "node:sqlite";
 
 export const MAX_ENVELOPE = 25 * 1024 * 1024;
 export const KINDS = ["audio", "text"] as const;
+/** Cota por conta: protege o disco da VPS, que é dividido com outros sites. */
+export const DEFAULT_QUOTA = { count: 500, bytes: 500 * 1024 * 1024 };
 
 export interface EnvelopeMeta { id: string; kind: string; mime: string; size: number; created_at: number }
 
@@ -15,6 +17,12 @@ export class Inbox {
       .prepare("INSERT INTO envelopes(id,account_id,kind,mime,body,created_at) VALUES(?,?,?,?,?,?)")
       .run(id, accountId, kind, mime, body, this.now());
     return id;
+  }
+
+  usage(accountId: string): { count: number; bytes: number } {
+    return this.db
+      .prepare("SELECT count(*) AS count, coalesce(sum(length(body)),0) AS bytes FROM envelopes WHERE account_id = ?")
+      .get(accountId) as { count: number; bytes: number };
   }
 
   list(accountId: string): EnvelopeMeta[] {

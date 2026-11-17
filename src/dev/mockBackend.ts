@@ -106,7 +106,7 @@ Object.assign(handlers, {
   remote_disconnect: () => void (remote.connected = false),
   remote_sync: () => 0,
   inbox_list: () => [...inbox].sort((a, b) => b.created_at - a.created_at),
-  inbox_body: () => [],
+  inbox_body: () => new ArrayBuffer(0),
   inbox_archive: ({ id }: any) => void (inbox.find((i) => i.id === id)!.status = "arquivada"),
   inbox_restore: ({ id }: any) => void (inbox.find((i) => i.id === id)!.status = "nova"),
   inbox_delete: ({ id }: any) => void (inbox = inbox.filter((i) => i.id !== id)),

@@ -24,6 +24,7 @@ const MIGRATIONS = [
      created_at INTEGER NOT NULL
    );
    CREATE INDEX envelopes_account ON envelopes(account_id, created_at);`,
+  `ALTER TABLE sessions ADD COLUMN scope TEXT NOT NULL DEFAULT 'full'`,
 ];
 
 export function openDb(path: string): DatabaseSync {

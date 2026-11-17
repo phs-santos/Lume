@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { postEnvelope } from "../api";
+import { fetchPublicKey, logout, postEnvelope } from "../api";
 import { seal } from "../crypto";
-import { enqueue, flush, pending } from "../queue";
-import { clearSession, session } from "../session";
+import { AuthExpired, discardFailed, enqueue, failed, flush, pending, type Failed } from "../queue";
+import { clearSession, saveSession, session } from "../session";
 import Shell from "./Shell.vue";
 
 const recording = ref(false);
@@ -12,6 +12,7 @@ const text = ref("");
 const waiting = ref(0);
 const toast = ref("");
 const error = ref("");
+const rejected = ref<Failed[]>([]);
 let recorder: MediaRecorder | null = null;
 let chunks: Blob[] = [];
 let tick: ReturnType<typeof setInterval> | null = null;
@@ -29,22 +30,49 @@ function say(msg: string) {
   setTimeout(() => toast.value === msg && (toast.value = ""), 3500);
 }
 
+const mine = async () => (await pending()).filter((p) => p.nickname === session.nickname).length;
+
+/** Confere se o computador trocou de chave; se trocou, as próximas ideias já vão para a nova. */
+async function refreshKey() {
+  try {
+    const pk = await fetchPublicKey(session.token);
+    if (session.publicKey && pk.join() !== session.publicKey.join()) {
+      saveSession(session.nickname, session.token, pk);
+      say("O Lume do computador trocou de chave. As próximas ideias já vão para a chave nova.");
+    }
+  } catch {
+    /* sem rede: segue com a chave guardada */
+  }
+}
+
 async function send() {
   try {
-    const r = await flush((p) => postEnvelope(session.token, p));
-    waiting.value = r.left;
-    return r;
+    await flush(session.nickname, (p) => postEnvelope(session.token, p));
   } catch (e) {
-    if (e instanceof Error && /Entre de novo/.test(e.message)) clearSession();
-    waiting.value = (await pending()).length;
-    return { sent: 0, left: waiting.value };
+    // sessão expirada: pede login de novo; as ideias continuam guardadas no aparelho
+    if (e instanceof AuthExpired) clearSession();
   }
+  waiting.value = await mine();
+  rejected.value = (await failed()).filter((f) => f.nickname === session.nickname);
+  return { left: waiting.value };
+}
+
+async function discard(id: string) {
+  await discardFailed(id);
+  rejected.value = rejected.value.filter((f) => f.id !== id);
+}
+
+async function signOut() {
+  const left = await mine();
+  if (left && !confirm(`${left} ${left === 1 ? "ideia ainda não foi enviada" : "ideias ainda não foram enviadas"}. Elas ficam guardadas e sobem quando você entrar de novo. Sair mesmo assim?`)) return;
+  await logout(session.token);
+  clearSession();
 }
 
 /** Cifra no aparelho, guarda na fila e tenta enviar. */
 async function keep(kind: "audio" | "text", mime: string, plain: Uint8Array) {
   const body = await seal(plain, session.publicKey!);
-  await enqueue({ kind, mime, body, createdAt: Date.now() });
+  await enqueue({ kind, mime, body, createdAt: Date.now(), nickname: session.nickname });
   const r = await send();
   say(r.left === 0 ? "Ideia enviada para o Lume." : "Ideia guardada. Envio quando houver rede.");
 }
@@ -83,6 +111,9 @@ async function sendText() {
 }
 
 onMounted(async () => {
+  // pede ao navegador para não apagar a fila de ideias quando faltar espaço
+  navigator.storage?.persist?.().catch(() => {});
+  await refreshKey();
   await send();
   window.addEventListener("online", send);
   retry = setInterval(send, 30_000);
@@ -108,9 +139,19 @@ onBeforeUnmount(() => {
       <button class="btn" :disabled="!text.trim()">Enviar ideia</button>
     </form>
 
+    <section v-if="rejected.length" class="rejected">
+      <p>{{ rejected.length === 1 ? "Uma ideia não pôde ser enviada:" : `${rejected.length} ideias não puderam ser enviadas:` }}</p>
+      <ul>
+        <li v-for="f in rejected" :key="f.id">
+          <span>{{ new Date(f.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) }} — {{ f.reason }}</span>
+          <button class="link" @click="discard(f.id)">Descartar</button>
+        </li>
+      </ul>
+    </section>
+
     <footer>
       <span :class="['state', { wait: waiting }]">{{ waiting ? `${waiting} ${waiting === 1 ? "ideia esperando" : "ideias esperando"} rede` : "Tudo enviado" }}</span>
-      <button class="link" @click="clearSession">Sair ({{ session.nickname }})</button>
+      <button class="link" @click="signOut">Sair ({{ session.nickname }})</button>
     </footer>
 
     <p v-if="toast" class="toast" role="status">{{ toast }}</p>
@@ -136,6 +177,10 @@ onBeforeUnmount(() => {
 @keyframes pulse { 50% { box-shadow: 0 0 0 14px rgba(180, 35, 24, 0.15), inset 0 -6px 10px rgba(0, 0, 0, 0.25); } }
 .hint { color: var(--note); font-size: 0.9rem; margin: 0.9rem 0 0; text-align: center; }
 .write { margin-bottom: 1.25rem; }
+.rejected { margin: 0 0 1rem; padding: 0.75rem 0.9rem; border: 1px solid #f0c2bd; border-radius: 10px; background: #fff5f4; font-size: 0.85rem; }
+.rejected p { margin: 0 0 0.4rem; color: var(--ribbon); }
+.rejected ul { list-style: none; margin: 0; padding: 0; }
+.rejected li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 footer { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
 .state { color: #3c8a5f; }
 .state.wait { color: #b07a10; }

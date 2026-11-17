@@ -96,3 +96,42 @@ impl LocalInbox for SharedLocal {
         g.as_ref().ok_or_else(|| local("LOCKED"))?.insert(m, body, received_at)
     }
 }
+
+/// Traduz o erro da sincronização para o app. Sessão expirada (401): esquece o token,
+/// para a tela de conectar aparecer de novo.
+pub fn sync_error_code(c: &Connection, e: &RemoteError) -> String {
+    if matches!(e, RemoteError::Status(401, _)) {
+        let _ = forget_session(c);
+        return "NOT_AUTHENTICATED".into();
+    }
+    e.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_conn;
+
+    fn connected(c: &Connection) {
+        let cfg = RemoteConfig { url: "https://x".into(), nickname: "henri".into(), token: "tok".into() };
+        save_connection(c, &cfg, &crypto::generate_keypair()).unwrap();
+    }
+
+    #[test]
+    fn expired_session_forgets_token_and_says_not_authenticated() {
+        let (_d, c) = test_conn();
+        connected(&c);
+        assert_eq!(sync_error_code(&c, &RemoteError::Status(401, "Entre de novo.".into())), "NOT_AUTHENTICATED");
+        assert!(load_config(&c).unwrap().is_none());
+        assert!(load_keypair(&c).unwrap().is_some()); // a chave fica
+    }
+
+    #[test]
+    fn other_errors_keep_the_session() {
+        let (_d, c) = test_conn();
+        connected(&c);
+        assert!(sync_error_code(&c, &RemoteError::Network("x".into())).starts_with("NETWORK"));
+        assert_eq!(sync_error_code(&c, &RemoteError::KeyMismatch), "KEY_MISMATCH");
+        assert!(load_config(&c).unwrap().is_some());
+    }
+}

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { IconArchive, IconArrowBackUp, IconFilePlus, IconMicrophone, IconPencil, IconPlayerPlay, IconRefresh, IconTrash, IconX } from "@tabler/icons-vue";
+import { IconArchive, IconArrowBackUp, IconPlugConnectedX, IconFilePlus, IconMicrophone, IconPencil, IconPlayerPlay, IconRefresh, IconTrash, IconX } from "@tabler/icons-vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { inboxArchive, inboxBody, inboxDelete, inboxList, inboxRestore, inboxToScene, remoteStatus, remoteSync } from "../../lib/api";
+import { inboxArchive, inboxBody, inboxDelete, inboxList, inboxRestore, inboxToScene, remoteDisconnect, remoteStatus, remoteSync } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 import type { InboxItem, RemoteStatus, SceneSummary } from "../../lib/types";
 import { audioBlob } from "./audioUrl";
@@ -47,6 +47,12 @@ async function fetchNow() {
   }
 }
 
+async function disconnect() {
+  if (!confirm("Desconectar este computador? As ideias já recebidas continuam aqui.")) return;
+  await remoteDisconnect();
+  await load();
+}
+
 async function play(i: InboxItem) {
   audio.value[i.id] ??= URL.createObjectURL(audioBlob(await inboxBody(i.id), i.mime));
 }
@@ -83,6 +89,9 @@ onBeforeUnmount(() => Object.values(audio.value).forEach(URL.revokeObjectURL));
       <h2>Ideias</h2>
       <button v-if="status?.connected" class="link icon" :disabled="busy" title="Buscar agora" aria-label="Buscar ideias agora" @click="fetchNow">
         <IconRefresh :size="18" :class="{ spin: busy }" />
+      </button>
+      <button v-if="status?.connected" class="link icon" title="Desconectar este computador" aria-label="Desconectar este computador" @click="disconnect">
+        <IconPlugConnectedX :size="18" />
       </button>
       <button class="link icon" aria-label="Fechar" @click="emit('close')"><IconX :size="18" /></button>
     </header>

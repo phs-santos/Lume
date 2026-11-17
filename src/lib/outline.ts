@@ -1,4 +1,4 @@
-import type { Outline } from "./types";
+import type { Outline, SceneSummary } from "./types";
 
 export type DropTarget = { toChapterId: string; toIndex: number };
 
@@ -15,4 +15,11 @@ export function resolveDrop(outline: Outline, sceneId: string, toChapterId: stri
   const sameChapter = from.chapter.id === toChapterId;
   if (sameChapter && from.scenes.findIndex((s) => s.id === sceneId) === toIndex) return null;
   return { toChapterId, toIndex };
+}
+
+/** A única cena de um capítulo, quando ela tem o mesmo nome dele: aí o sumário mostra uma linha só. */
+export function singleScene(c: Outline["chapters"][number]): SceneSummary | null {
+  if (c.scenes.length !== 1) return null;
+  const [s] = c.scenes;
+  return s.title.trim() === c.chapter.title.trim() ? s : null;
 }

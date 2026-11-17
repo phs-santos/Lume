@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveDrop } from "./outline";
+import { resolveDrop, singleScene } from "./outline";
 import type { Outline } from "./types";
 
 const scene = (id: string, chapter_id: string, position: number) => ({ id, chapter_id, title: id, word_count: 0, position });
@@ -31,5 +31,27 @@ describe("resolveDrop", () => {
   });
   it("cena desconhecida não move", () => {
     expect(resolveDrop(outline, "Z", "c1", 0)).toBeNull();
+  });
+});
+
+describe("singleScene", () => {
+  const ch = (title: string, ...titles: string[]) => ({
+    chapter: { id: "c", book_id: "b", title, position: 0 },
+    scenes: titles.map((t, i) => ({ id: `s${i}`, chapter_id: "c", title: t, word_count: 0, position: i })),
+  });
+  it("1 cena com mesmo título → a cena", () => {
+    expect(singleScene(ch("X", "X"))?.id).toBe("s0");
+  });
+  it("1 cena com título diferente → null", () => {
+    expect(singleScene(ch("X", "Y"))).toBeNull();
+  });
+  it("2 cenas → null", () => {
+    expect(singleScene(ch("X", "X", "X"))).toBeNull();
+  });
+  it("0 cenas → null", () => {
+    expect(singleScene(ch("X"))).toBeNull();
+  });
+  it("ignora espaço sobrando", () => {
+    expect(singleScene(ch(" X ", "X"))?.id).toBe("s0");
   });
 });

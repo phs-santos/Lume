@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import { IconFilePlus, IconPlus, IconTrash } from "@tabler/icons-vue";
 import { VueDraggable } from "vue-draggable-plus";
 import { chapterCreate, chapterDelete, chapterRename, sceneCreate, sceneMove } from "../../lib/api";
@@ -24,9 +24,6 @@ const error = ref("");
 const editing = ref<string | null>(null);
 const draftTitle = ref("");
 
-const total = computed(() =>
-  props.outline.chapters.reduce((n, c) => n + c.scenes.reduce((m, s) => m + s.word_count, 0), 0),
-);
 const chapterWords = (scenes: SceneSummary[]) => scenes.reduce((n, s) => n + s.word_count, 0);
 const fmt = (n: number) => n.toLocaleString("pt-BR");
 
@@ -83,10 +80,6 @@ function finishRename(id: string) {
 
 <template>
   <nav class="outline" aria-label="Sumário do livro">
-    <header>
-      <h2>{{ outline.book.title }}</h2>
-      <p class="count">{{ fmt(total) }} palavras</p>
-    </header>
 
     <p v-if="error" class="error" role="alert">{{ error }}</p>
 
@@ -139,12 +132,12 @@ function finishRename(id: string) {
 
 <style scoped>
 .outline {
-  height: 100%;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: none;
-  padding: 0 0.75rem 3rem 1rem;
+  padding: 1rem 0.75rem 3rem 1rem;
   background: var(--platen);
   color: var(--platen-ink);
   font-size: 0.9rem;

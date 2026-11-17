@@ -6,7 +6,7 @@ import { writeFile } from "@tauri-apps/plugin-fs";
 import { toDocx } from "../../lib/export/docx";
 import { toMarkdown } from "../../lib/export/markdown";
 import type { ExportBook } from "../../lib/export/types";
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { bookOutline, chapterCreate, sceneCreate, sceneGet, sceneRename, sceneRestore, sceneSave, sceneVersions } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 import type { Outline as OutlineT, Scene, Version } from "../../lib/types";
@@ -27,6 +27,9 @@ const scene = ref<Scene | null>(null);
 const sidebar = ref(true);
 const panel = ref<"none" | "settings" | "versions" | "export" | "help">("none");
 const mac = isMac();
+const totalWords = computed(() =>
+  (outline.value?.chapters ?? []).reduce((n, c) => n + c.scenes.reduce((m, x) => m + x.word_count, 0), 0),
+);
 const hint = (a: Action) => label(SHORTCUTS.find((s) => s.action === a)!, mac);
 const exportMsg = ref("");
 const versions = ref<Version[]>([]);
@@ -228,16 +231,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div :class="['editor', { 'no-sidebar': !sidebar }]">
-    <Outline
-      v-if="outline && sidebar"
-      :outline="outline"
-      :current-scene-id="scene?.id ?? ''"
-      @select="openScene"
-      @changed="reloadOutline"
-    />
-
-    <main class="desk">
       <header class="bar">
+        <div v-if="sidebar && outline" class="book">
+          <span class="book-title">{{ outline.book.title }}</span>
+          <span class="book-words">{{ totalWords.toLocaleString("pt-BR") }} palavras</span>
+        </div>
+        <div class="bar-main">
         <button class="link" title="Voltar à biblioteca" @click="back"><IconArrowLeft :size="18" stroke-width="1.75" /> Livros</button>
         <button class="link icon" :title="`${sidebar ? 'Esconder' : 'Mostrar'} sumário (${hint('toggleSidebar')})`" :aria-label="sidebar ? 'Esconder sumário' : 'Mostrar sumário'" @click="sidebar = !sidebar">
           <IconLayoutSidebarLeftCollapse v-if="sidebar" :size="18" stroke-width="1.75" />
@@ -260,8 +259,18 @@ onBeforeUnmount(() => {
           <button :class="['link', { on: panel === 'settings' }]" :title="hint('settings')" @click="panel = panel === 'settings' ? 'none' : 'settings'"><IconAdjustmentsHorizontal :size="18" stroke-width="1.75" /> Ajustes</button>
           <button class="link icon" :title="`Atalhos (${hint('help')})`" aria-label="Atalhos de teclado" @click="panel = 'help'"><IconKeyboard :size="18" stroke-width="1.75" /></button>
         </nav>
+        </div>
       </header>
 
+    <Outline
+      v-if="outline && sidebar"
+      :outline="outline"
+      :current-scene-id="scene?.id ?? ''"
+      @select="openScene"
+      @changed="reloadOutline"
+    />
+
+    <main class="desk">
       <p v-if="error" class="error banner" role="alert">{{ error }}</p>
 
       <Typewriter
@@ -271,6 +280,7 @@ onBeforeUnmount(() => {
         :content-json="scene.content_json"
         :focus-mode="prefs.focus === 'on'"
         :key-sound="prefs.keysound === 'on'"
+        :machine="prefs.machine === 'on'"
         @change="onChange"
       />
       <p v-else-if="outline" class="empty">Crie uma cena no sumário para começar.</p>
@@ -303,20 +313,45 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.editor { display: grid; grid-template-columns: 17rem minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; overflow: hidden; }
-.editor.no-sidebar { grid-template-columns: 1fr; }
-.desk { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.85rem;
-  border-bottom: 1px solid var(--rule);
+/* Moldura escura em L: barra do topo + sumário formam uma peça só, a mesa fica dentro. */
+.editor {
+  display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+  background: var(--platen);
 }
+.editor.no-sidebar { grid-template-columns: minmax(0, 1fr); }
+.desk {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-top-left-radius: 14px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.no-sidebar .desk { border-radius: 0; }
+.bar {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr);
+  align-items: center;
+  min-height: 3.25rem;
+  color: var(--platen-ink);
+  font-size: 0.85rem;
+}
+.no-sidebar .bar { grid-template-columns: minmax(0, 1fr); }
+.book { display: flex; flex-direction: column; padding: 0.4rem 1rem 0.4rem 1.25rem; min-width: 0; }
+.book-title { font: 400 1rem/1.2 var(--font-mono); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.book-words { font-size: 0.72rem; color: #8b919c; }
+.bar-main { display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.75rem; min-width: 0; }
+.bar .link { color: #aeb3bc; }
+.bar .link:hover, .bar .link.on { background: rgba(255, 255, 255, 0.08); color: #fff; }
 .bar .icon { padding: 0 0.5rem; }
 .tools { display: flex; gap: 0.15rem; }
-.link.on { background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); }
 .scene-title {
   flex: 1;
   min-width: 0;
@@ -325,14 +360,14 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   background: none;
   font: 400 1rem var(--font-mono);
-  color: var(--ink);
+  color: #fff;
 }
-.scene-title:hover { border-color: var(--rule); }
-.scene-title:focus { outline: none; border-color: var(--ink); }
-.status { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--note); font-size: 0.78rem; padding: 0 0.5rem; }
+.scene-title:hover { border-color: rgba(255, 255, 255, 0.15); }
+.scene-title:focus { outline: none; border-color: rgba(255, 255, 255, 0.35); }
+.status { display: inline-flex; align-items: center; gap: 0.4rem; color: #8b919c; font-size: 0.78rem; padding: 0 0.5rem; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: #3c8a5f; }
 .status.salvando .dot { background: #c99a2e; }
-.status.erro { color: var(--ribbon); }
+.status.erro { color: #ff8a80; }
 .status.erro .dot { background: var(--ribbon); }
 .banner { padding: 0.5rem 1.25rem; margin: 0; }
 .desk > :deep(.typewriter) { flex: 1; min-height: 0; }

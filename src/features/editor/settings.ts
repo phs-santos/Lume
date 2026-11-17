@@ -6,9 +6,10 @@ export interface Prefs {
   theme: "papel" | "escuro";
   focus: "on" | "off";
   keysound: "on" | "off";
+  machine: "on" | "off";
 }
 
-export const defaults: Prefs = { font: "serif", theme: "papel", focus: "off", keysound: "off" };
+export const defaults: Prefs = { font: "serif", theme: "papel", focus: "off", keysound: "off", machine: "on" };
 export const prefs = reactive<Prefs>({ ...defaults });
 
 function apply() {

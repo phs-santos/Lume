@@ -25,6 +25,10 @@ const emit = defineEmits<{ close: [] }>();
       <input type="checkbox" :checked="prefs.focus === 'on'" @change="setPref('focus', prefs.focus === 'on' ? 'off' : 'on')" />
     </label>
     <label class="row">
+      <span>Mostrar a máquina</span>
+      <input type="checkbox" :checked="prefs.machine === 'on'" @change="setPref('machine', prefs.machine === 'on' ? 'off' : 'on')" />
+    </label>
+    <label class="row">
       <span>Som de tecla</span>
       <input type="checkbox" :checked="prefs.keysound === 'on'" @change="setPref('keysound', prefs.keysound === 'on' ? 'off' : 'on')" />
     </label>

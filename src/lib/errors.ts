@@ -7,6 +7,9 @@ const messages: Record<ErrorCode, string> = {
   VAULT_EXISTS: "Já existe um cofre neste computador.",
   LOCKED: "O cofre está trancado. Abra com sua senha.",
   CHAPTER_NOT_EMPTY: "Mova as cenas antes de apagar o capítulo.",
+  DB_EXISTS: "Já existe um livro cifrado neste computador. Não vou criar um cofre novo por cima dele.",
+  WRONG_KEY: "Este cofre não abre o livro guardado neste computador. Os arquivos podem ter sido trocados.",
+  NOT_FOUND: "Não encontrei isso. Talvez já tenha sido apagado.",
 };
 
 /** Converte o erro vindo do Rust em uma frase para a pessoa. */

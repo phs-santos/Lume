@@ -14,6 +14,7 @@ import SettingsPanel from "./SettingsPanel.vue";
 import Typewriter from "./Typewriter.vue";
 import { loadPrefs, prefs } from "./settings";
 import { useAutosave } from "./useAutosave";
+import { handleCloseRequest, registerFlusher } from "./exitGuard";
 
 const props = defineProps<{ bookId: string }>();
 const emit = defineEmits<{ close: [] }>();
@@ -28,16 +29,17 @@ const error = ref("");
 const saveState = ref<"salvo" | "salvando" | "erro">("salvo");
 const editorKey = ref(0); // força recriar o editor ao restaurar uma versão
 
-const autosave = useAutosave(async (json, words) => {
-  const s = scene.value;
-  if (!s) return;
+const autosave = useAutosave(async (sceneId, json, words) => {
   saveState.value = "salvando";
   try {
-    await sceneSave(s.id, json, words);
-    s.content_json = json;
-    s.word_count = words;
+    await sceneSave(sceneId, json, words);
+    const s = scene.value;
+    if (s?.id === sceneId) {
+      s.content_json = json;
+      s.word_count = words;
+    }
     for (const c of outline.value?.chapters ?? [])
-      for (const x of c.scenes) if (x.id === s.id) x.word_count = words;
+      for (const x of c.scenes) if (x.id === sceneId) x.word_count = words;
     saveState.value = "salvo";
   } catch (e) {
     saveState.value = "erro";
@@ -45,10 +47,9 @@ const autosave = useAutosave(async (json, words) => {
   }
 });
 
-/** Só aceita alterações do editor da cena atual: um editor antigo nunca grava na cena nova. */
+/** Cada alteração leva o id da cena de onde veio: nunca grava texto numa cena errada. */
 function onChange(sceneId: string, json: string, words: number) {
-  if (sceneId !== scene.value?.id) return;
-  autosave.schedule(json, words);
+  autosave.schedule(sceneId, json, words);
 }
 
 async function flushSafely() {
@@ -88,6 +89,7 @@ async function showVersions() {
 }
 
 async function restore(v: Version) {
+  if (!(await flushSafely())) return;
   scene.value = await sceneRestore(v.id);
   editorKey.value++;
   panel.value = "none";
@@ -139,9 +141,12 @@ const when = (t: number) =>
   new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
 let unlistenClose: (() => void) | null = null;
+const unregisterFlusher = registerFlusher(flushSafely);
+const flushOnBlur = () => void flushSafely();
 
 onMounted(async () => {
   window.addEventListener("keydown", onKey);
+  window.addEventListener("blur", flushOnBlur);
   try {
     await loadPrefs();
     await reloadOutline();
@@ -150,15 +155,15 @@ onMounted(async () => {
   } catch (e) {
     error.value = errorMessage(e);
   }
-  // Antes de a janela fechar, grava o que estiver pendente.
-  unlistenClose = await getCurrentWindow().onCloseRequested(async () => {
-    await flushSafely();
-  });
+  // Antes de a janela fechar, grava o pendente; se não conseguir, a janela não fecha.
+  unlistenClose = await getCurrentWindow().onCloseRequested(handleCloseRequest);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onKey);
+  window.removeEventListener("blur", flushOnBlur);
   unlistenClose?.();
+  unregisterFlusher();
 });
 </script>
 

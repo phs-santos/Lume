@@ -3,7 +3,17 @@ pub mod db;
 pub mod state;
 pub mod vault;
 
-use tauri::Manager;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{Emitter, Manager};
+
+/// Fica `true` quando a interface confirmou que salvou tudo e pediu para sair.
+static EXIT_READY: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    EXIT_READY.store(true, Ordering::SeqCst);
+    app.exit(0);
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -41,7 +51,19 @@ pub fn run() {
             commands::scene_restore,
             commands::setting_get,
             commands::setting_set,
+            exit_app,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Cmd+Q / sair pelo menu: antes de encerrar, pede à interface que grave o texto pendente.
+            // A interface responde chamando `exit_app` (ou não, se o salvamento falhar).
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+                let user_quit = code.is_none();
+                if user_quit && !EXIT_READY.load(Ordering::SeqCst) && !app.webview_windows().is_empty() {
+                    api.prevent_exit();
+                    let _ = app.emit("flush-now", ());
+                }
+            }
+        });
 }

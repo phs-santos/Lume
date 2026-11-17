@@ -17,6 +17,9 @@ pub fn status(s: &AppState) -> &'static str {
         "unlocked"
     } else if s.vault_path().exists() {
         "locked"
+    } else if s.db_path().exists() {
+        // Há um livro cifrado, mas o arquivo do cofre sumiu: nunca oferecer "criar" por cima.
+        "missing_vault"
     } else {
         "none"
     }
@@ -32,9 +35,17 @@ pub fn create_vault(s: &AppState, nickname: &str, password: &str) -> CmdResult<S
     if s.vault_path().exists() {
         return Err("VAULT_EXISTS".into());
     }
+    if s.db_path().exists() {
+        return Err("DB_EXISTS".into());
+    }
     let (v, key, phrase) = vault::create(nickname, password).map_err(err)?;
-    vault::save(&s.vault_path(), &v).map_err(err)?;
+    // Cria o banco antes de gravar o cofre; se o cofre não puder ser gravado, desfaz o banco.
     open_db(s, &key)?;
+    if let Err(e) = vault::save(&s.vault_path(), &v) {
+        lock_vault(s);
+        let _ = std::fs::remove_file(s.db_path());
+        return Err(err(e));
+    }
     Ok(phrase)
 }
 
@@ -155,6 +166,22 @@ mod tests {
         assert_eq!(status(&s), "locked");
         unlock_vault(&s, "senha-boa").unwrap();
         assert_eq!(status(&s), "unlocked");
+    }
+
+    #[test]
+    fn create_over_existing_book_is_db_exists_and_writes_no_vault() {
+        let (_d, s) = state();
+        std::fs::write(s.db_path(), b"livro antigo cifrado").unwrap();
+        assert_eq!(create_vault(&s, "ana", "x").unwrap_err(), "DB_EXISTS");
+        assert!(!s.vault_path().exists());
+        assert_eq!(std::fs::read(s.db_path()).unwrap(), b"livro antigo cifrado");
+    }
+
+    #[test]
+    fn status_reports_missing_vault_when_book_exists() {
+        let (_d, s) = state();
+        std::fs::write(s.db_path(), b"x").unwrap();
+        assert_eq!(status(&s), "missing_vault");
     }
 
     #[test]

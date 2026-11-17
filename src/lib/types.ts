@@ -1,4 +1,4 @@
-export type VaultStatus = "none" | "locked" | "unlocked";
+export type VaultStatus = "none" | "locked" | "unlocked" | "missing_vault";
 export type AiMode = "conselheira" | "coautora";
 
 /** Códigos de erro vindos do Rust. */
@@ -8,7 +8,10 @@ export type ErrorCode =
   | "NO_VAULT"
   | "VAULT_EXISTS"
   | "LOCKED"
-  | "CHAPTER_NOT_EMPTY";
+  | "CHAPTER_NOT_EMPTY"
+  | "DB_EXISTS"
+  | "WRONG_KEY"
+  | "NOT_FOUND";
 
 export interface Book { id: string; title: string; ai_mode: AiMode; created_at: number }
 export interface Chapter { id: string; book_id: string; title: string; position: number }

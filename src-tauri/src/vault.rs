@@ -150,16 +150,29 @@ pub fn load(path: &Path) -> Result<Option<VaultFile>, VaultError> {
     }
 }
 
-/// Escrita atômica: grava num temporário ao lado e renomeia.
+/// Escrita atômica e durável: guarda a versão anterior em `.bak`, grava num temporário,
+/// força para o disco (`sync_all`), renomeia e sincroniza a pasta.
 pub fn save(path: &Path, v: &VaultFile) -> Result<(), VaultError> {
+    use std::io::Write;
     let io = |e: std::io::Error| VaultError::Io(e.to_string());
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(io)?;
+    let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
+    std::fs::create_dir_all(&dir).map_err(io)?;
+    if path.exists() {
+        std::fs::copy(path, path.with_extension("json.bak")).map_err(io)?;
     }
     let tmp = path.with_extension("json.tmp");
     let json = serde_json::to_vec_pretty(v).map_err(|e| VaultError::Io(e.to_string()))?;
-    std::fs::write(&tmp, json).map_err(io)?;
-    std::fs::rename(&tmp, path).map_err(io)
+    {
+        let mut f = std::fs::File::create(&tmp).map_err(io)?;
+        f.write_all(&json).map_err(io)?;
+        f.sync_all().map_err(io)?;
+    }
+    std::fs::rename(&tmp, path).map_err(io)?;
+    #[cfg(unix)]
+    if let Ok(d) = std::fs::File::open(&dir) {
+        let _ = d.sync_all();
+    }
+    Ok(())
 }
 
 mod b64 {
@@ -223,6 +236,19 @@ mod tests {
     fn garbage_phrase_is_invalidphrase() {
         let (v, _, _) = create("ana", "x").unwrap();
         assert!(matches!(recover(&v, "isso nao e uma frase", "y"), Err(VaultError::InvalidPhrase)));
+    }
+
+    #[test]
+    fn save_keeps_previous_version_as_bak() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.json");
+        let (v1, _, _) = create("ana", "x").unwrap();
+        let (v2, _, _) = create("ana", "y").unwrap();
+        save(&path, &v1).unwrap();
+        save(&path, &v2).unwrap();
+        assert_eq!(load(&path).unwrap().unwrap(), v2);
+        assert_eq!(load(&path.with_extension("json.bak")).unwrap().unwrap(), v1);
+        assert!(!path.with_extension("json.tmp").exists());
     }
 
     #[test]

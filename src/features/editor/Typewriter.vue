@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import StarterKit from "@tiptap/starter-kit";
 import { EditorContent, useEditor } from "@tiptap/vue-3";
 import { onBeforeUnmount, ref } from "vue";
 import { countWords } from "../../lib/wordcount";
-import { CurrentBlock } from "./currentBlock";
+import { editorOptions } from "./editorConfig";
 import { playKey } from "./keySound";
 
 const props = defineProps<{ sceneId: string; contentJson: string; focusMode: boolean; keySound: boolean }>();
@@ -32,10 +31,7 @@ function centerCaret() {
 const editor = useEditor({
   content: parse(props.contentJson),
   autofocus: "end",
-  extensions: [
-    StarterKit.configure({ heading: false, codeBlock: false, code: false, horizontalRule: false }),
-    CurrentBlock,
-  ],
+  ...editorOptions(),
   editorProps: {
     attributes: { spellcheck: "true", lang: "pt-BR", "aria-label": "Texto da cena" },
     handleKeyDown: (_view, e) => {

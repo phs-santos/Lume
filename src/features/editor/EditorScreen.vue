@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { writeFile } from "@tauri-apps/plugin-fs";
+import { toDocx } from "../../lib/export/docx";
+import { toMarkdown } from "../../lib/export/markdown";
+import type { ExportBook } from "../../lib/export/types";
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { bookOutline, sceneGet, sceneRename, sceneRestore, sceneSave, sceneVersions } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
@@ -16,7 +21,8 @@ const emit = defineEmits<{ close: [] }>();
 const outline = ref<OutlineT | null>(null);
 const scene = ref<Scene | null>(null);
 const sidebar = ref(true);
-const panel = ref<"none" | "settings" | "versions">("none");
+const panel = ref<"none" | "settings" | "versions" | "export">("none");
+const exportMsg = ref("");
 const versions = ref<Version[]>([]);
 const error = ref("");
 const saveState = ref<"salvo" | "salvando" | "erro">("salvo");
@@ -88,6 +94,36 @@ async function restore(v: Version) {
   await reloadOutline();
 }
 
+async function exportBook(format: "md" | "docx") {
+  exportMsg.value = "";
+  if (!outline.value || !(await flushSafely())) return;
+  try {
+    const o = await bookOutline(props.bookId);
+    const book: ExportBook = {
+      title: o.book.title,
+      chapters: await Promise.all(
+        o.chapters.map(async (c) => ({
+          title: c.chapter.title,
+          scenes: await Promise.all(
+            c.scenes.map(async (s) => ({ title: s.title, doc: JSON.parse((await sceneGet(s.id)).content_json) })),
+          ),
+        })),
+      ),
+    };
+    const name = o.book.title.replace(/[\\/:*?"<>|]/g, "-");
+    const path = await saveDialog({
+      defaultPath: `${name}.${format}`,
+      filters: [format === "md" ? { name: "Markdown", extensions: ["md"] } : { name: "Word", extensions: ["docx"] }],
+    });
+    if (!path) return;
+    const bytes = format === "md" ? new TextEncoder().encode(toMarkdown(book)) : await toDocx(book);
+    await writeFile(path, bytes);
+    exportMsg.value = `Exportado para ${path}`;
+  } catch (e) {
+    exportMsg.value = `Não consegui exportar: ${errorMessage(e)}`;
+  }
+}
+
 async function back() {
   if (await flushSafely()) emit("close");
 }
@@ -149,6 +185,7 @@ onBeforeUnmount(() => {
         />
         <span class="status" :class="saveState">{{ saveState === "erro" ? "Não salvo" : saveState === "salvando" ? "Salvando…" : "Salvo" }}</span>
         <button class="link" @click="showVersions">Versões</button>
+        <button class="link" @click="panel = panel === 'export' ? 'none' : 'export'">Exportar</button>
         <button class="link" @click="panel = panel === 'settings' ? 'none' : 'settings'">Ajustes</button>
       </header>
 
@@ -166,6 +203,15 @@ onBeforeUnmount(() => {
       <p v-else-if="outline" class="empty">Crie uma cena no sumário para começar.</p>
 
       <SettingsPanel v-if="panel === 'settings'" @close="panel = 'none'" />
+
+      <aside v-if="panel === 'export'" class="versions" aria-label="Exportar o livro">
+        <p class="hint">O livro inteiro, na ordem do sumário. Os títulos das cenas não saem no arquivo.</p>
+        <div class="actions">
+          <button class="btn" @click="exportBook('docx')">Exportar para Word</button>
+          <button class="btn quiet" @click="exportBook('md')">Markdown</button>
+        </div>
+        <p v-if="exportMsg" class="hint export-msg">{{ exportMsg }}</p>
+      </aside>
 
       <aside v-if="panel === 'versions'" class="versions" aria-label="Versões da cena">
         <p v-if="!versions.length" class="hint">Ainda não há versões salvas desta cena.</p>
@@ -227,5 +273,6 @@ onBeforeUnmount(() => {
 .versions ol { list-style: none; padding: 0; margin: 0 0 0.75rem; }
 .versions li { display: grid; grid-template-columns: 1fr auto; gap: 0.1rem 1rem; padding: 0.5rem 0; border-bottom: 1px solid var(--rule); }
 .versions li .link { grid-column: 2; grid-row: 1; }
+.export-msg { margin-top: 0.75rem; word-break: break-all; }
 .hint { color: var(--note); font-size: 0.8rem; margin: 0; }
 </style>

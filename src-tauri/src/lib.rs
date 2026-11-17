@@ -53,6 +53,16 @@ pub fn run() {
             commands::scene_restore,
             commands::setting_get,
             commands::setting_set,
+            commands::remote_status,
+            commands::remote_connect,
+            commands::remote_disconnect,
+            commands::remote_sync,
+            commands::inbox_list,
+            commands::inbox_body,
+            commands::inbox_archive,
+            commands::inbox_restore,
+            commands::inbox_delete,
+            commands::inbox_to_scene,
             exit_app,
         ])
         .build(tauri::generate_context!())

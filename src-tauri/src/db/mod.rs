@@ -5,6 +5,7 @@ use rusqlite::Connection;
 use std::path::Path;
 
 pub mod books;
+pub mod inbox;
 pub mod scenes;
 pub mod settings;
 
@@ -104,6 +105,16 @@ CREATE TABLE scene_versions(
   created_at INTEGER NOT NULL
 );
 CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+"#, r#"
+CREATE TABLE inbox(
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK(kind IN('audio','text')),
+  mime TEXT NOT NULL,
+  body BLOB NOT NULL,
+  created_at INTEGER NOT NULL,
+  received_at INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK(status IN('nova','arquivada'))
+);
 "#];
 
 pub fn open(path: &Path, key: &MasterKey) -> Result<Connection, DbError> {
@@ -149,6 +160,25 @@ mod tests {
             [title],
         )
         .unwrap();
+    }
+
+    #[test]
+    fn migration_v2_keeps_existing_books() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("livro.db");
+        {
+            // banco no formato v1, como o de quem já usava o Lume
+            let c = Connection::open(&p).unwrap();
+            let hex: String = key(7).0.iter().map(|b| format!("{b:02x}")).collect();
+            c.execute_batch(&format!("PRAGMA key = \"x'{hex}'\"; {} PRAGMA user_version = 1;", MIGRATIONS[0])).unwrap();
+            insert_book(&c, "Livro antigo");
+        }
+        let c = open(&p, &key(7)).unwrap();
+        let t: String = c.query_row("SELECT title FROM books", [], |r| r.get(0)).unwrap();
+        assert_eq!(t, "Livro antigo");
+        let v: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, 2);
+        c.execute("SELECT count(*) FROM inbox", []).ok();
     }
 
     #[test]

@@ -34,6 +34,7 @@ uuid = { version = "1.29.3", features = ["v4"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 crypto_box = { version = "0.9", features = ["seal", "std"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

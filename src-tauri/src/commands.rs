@@ -149,6 +149,81 @@ db_cmd!(scene_restore(version_id: String) -> Scene => |c| scenes::scene_restore(
 db_cmd!(setting_get(key: String) -> Option<String> => |c| settings::setting_get(c, &key));
 db_cmd!(setting_set(key: String, value: String) -> () => |c| settings::setting_set(c, &key, &value));
 
+// ---------- celular e caixa de entrada ----------
+use crate::db::inbox::{self, InboxItem};
+use crate::remote::{self, client::HttpApi, sync, SharedLocal};
+
+#[derive(serde::Serialize)]
+pub struct RemoteStatus {
+    pub connected: bool,
+    pub nickname: Option<String>,
+    pub url: Option<String>,
+}
+
+#[tauri::command]
+pub fn remote_status(state: State<AppState>) -> CmdResult<RemoteStatus> {
+    let g = state.db.lock().unwrap();
+    let c = g.as_ref().ok_or_else(|| "LOCKED".to_string())?;
+    let cfg = remote::load_config(c).map_err(err)?;
+    Ok(RemoteStatus { connected: cfg.is_some(), nickname: cfg.as_ref().map(|x| x.nickname.clone()), url: cfg.map(|x| x.url) })
+}
+
+/// Entra na conta do servidor (ou cadastra com convite) e publica a chave pública deste computador.
+#[tauri::command]
+pub async fn remote_connect(
+    state: State<'_, AppState>,
+    url: String,
+    nickname: String,
+    password: String,
+    invite: Option<String>,
+) -> CmdResult<()> {
+    let kp = {
+        let g = state.db.lock().unwrap();
+        let c = g.as_ref().ok_or_else(|| "LOCKED".to_string())?;
+        remote::load_keypair(c).map_err(err)?.unwrap_or_else(remote::crypto::generate_keypair)
+    };
+    let (cfg, kp) = tauri::async_runtime::spawn_blocking(move || remote::connect(&url, &nickname, &password, invite.as_deref(), kp))
+        .await
+        .map_err(err)?
+        .map_err(err)?;
+    let g = state.db.lock().unwrap();
+    let c = g.as_ref().ok_or_else(|| "LOCKED".to_string())?;
+    remote::save_connection(c, &cfg, &kp).map_err(err)
+}
+
+#[tauri::command]
+pub fn remote_disconnect(state: State<AppState>) -> CmdResult<()> {
+    let g = state.db.lock().unwrap();
+    let c = g.as_ref().ok_or_else(|| "LOCKED".to_string())?;
+    remote::forget_session(c).map_err(err)
+}
+
+/// Busca as ideias novas no servidor. Devolve quantas chegaram.
+#[tauri::command]
+pub async fn remote_sync(state: State<'_, AppState>) -> CmdResult<usize> {
+    let db = state.db.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (cfg, kp) = {
+            let g = db.lock().unwrap();
+            let c = g.as_ref().ok_or_else(|| "LOCKED".to_string())?;
+            let cfg = remote::load_config(c).map_err(err)?.ok_or_else(|| "NOT_CONNECTED".to_string())?;
+            let kp = remote::load_keypair(c).map_err(err)?.ok_or_else(|| "NOT_CONNECTED".to_string())?;
+            (cfg, kp)
+        };
+        let api = HttpApi { url: cfg.url, token: cfg.token };
+        sync::sync(&SharedLocal(db.clone()), &api, &kp, now_ms()).map_err(err)
+    })
+    .await
+    .map_err(err)?
+}
+
+db_cmd!(inbox_list() -> Vec<InboxItem> => |c| inbox::inbox_list(c));
+db_cmd!(inbox_body(id: String) -> Vec<u8> => |c| inbox::inbox_body(c, &id));
+db_cmd!(inbox_archive(id: String) -> () => |c| inbox::inbox_set_status(c, &id, "arquivada"));
+db_cmd!(inbox_restore(id: String) -> () => |c| inbox::inbox_set_status(c, &id, "nova"));
+db_cmd!(inbox_delete(id: String) -> () => |c| inbox::inbox_delete(c, &id));
+db_cmd!(inbox_to_scene(id: String, chapter_id: String, index: Option<i64>) -> Scene => |c| inbox::inbox_to_scene(c, &id, &chapter_id, index, now_ms()));
+
 #[cfg(test)]
 mod tests {
     use super::*;

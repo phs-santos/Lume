@@ -80,6 +80,53 @@ pub fn vault_lock(state: State<AppState>) {
     lock_vault(&state)
 }
 
+// ---------- livro ----------
+use crate::db::books::{self, Book, Chapter, Outline};
+use crate::db::scenes::{self, Scene, Version};
+use crate::db::settings;
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn with_db<T>(s: &AppState, f: impl FnOnce(&rusqlite::Connection) -> Result<T, db::DbError>) -> CmdResult<T> {
+    let g = s.db.lock().unwrap();
+    let c = g.as_ref().ok_or_else(|| "LOCKED".to_string())?;
+    f(c).map_err(err)
+}
+
+macro_rules! db_cmd {
+    ($name:ident ( $($arg:ident : $ty:ty),* ) -> $ret:ty => |$c:ident| $body:expr) => {
+        #[tauri::command]
+        pub fn $name(state: State<AppState>, $($arg: $ty),*) -> CmdResult<$ret> {
+            with_db(&state, |$c| $body)
+        }
+    };
+}
+
+db_cmd!(book_list() -> Vec<Book> => |c| books::book_list(c));
+db_cmd!(book_create(title: String, ai_mode: String) -> Book => |c| books::book_create(c, &title, &ai_mode, now_ms()));
+db_cmd!(book_rename(id: String, title: String) -> () => |c| books::book_rename(c, &id, &title));
+db_cmd!(book_set_mode(id: String, ai_mode: String) -> () => |c| books::book_set_mode(c, &id, &ai_mode));
+db_cmd!(book_outline(book_id: String) -> Outline => |c| books::book_outline(c, &book_id));
+db_cmd!(chapter_create(book_id: String, title: String, index: Option<i64>) -> Chapter => |c| books::chapter_create(c, &book_id, &title, index));
+db_cmd!(chapter_rename(id: String, title: String) -> () => |c| books::chapter_rename(c, &id, &title));
+db_cmd!(chapter_move(id: String, to_index: i64) -> () => |c| books::chapter_move(c, &id, to_index));
+db_cmd!(chapter_delete(id: String) -> () => |c| books::chapter_delete(c, &id));
+db_cmd!(scene_create(chapter_id: String, title: String, index: Option<i64>) -> Scene => |c| scenes::scene_create(c, &chapter_id, &title, index, now_ms()));
+db_cmd!(scene_get(id: String) -> Scene => |c| scenes::scene_get(c, &id));
+db_cmd!(scene_rename(id: String, title: String) -> () => |c| scenes::scene_rename(c, &id, &title));
+db_cmd!(scene_save(id: String, content_json: String, word_count: i64) -> () => |c| scenes::scene_save(c, &id, &content_json, word_count, now_ms()));
+db_cmd!(scene_move(id: String, to_chapter_id: String, to_index: i64) -> () => |c| scenes::scene_move(c, &id, &to_chapter_id, to_index));
+db_cmd!(scene_delete(id: String) -> () => |c| scenes::scene_delete(c, &id));
+db_cmd!(scene_versions(scene_id: String) -> Vec<Version> => |c| scenes::scene_versions(c, &scene_id));
+db_cmd!(scene_restore(version_id: String) -> Scene => |c| scenes::scene_restore(c, &version_id, now_ms()));
+db_cmd!(setting_get(key: String) -> Option<String> => |c| settings::setting_get(c, &key));
+db_cmd!(setting_set(key: String, value: String) -> () => |c| settings::setting_set(c, &key, &value));
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,6 +135,14 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let s = AppState::new(d.path().to_path_buf());
         (d, s)
+    }
+
+    #[test]
+    fn db_commands_require_unlock() {
+        let (_d, s) = state();
+        create_vault(&s, "ana", "x").unwrap();
+        lock_vault(&s);
+        assert_eq!(with_db(&s, books::book_list).unwrap_err(), "LOCKED");
     }
 
     #[test]

@@ -4,10 +4,72 @@ use crate::vault::MasterKey;
 use rusqlite::Connection;
 use std::path::Path;
 
+pub mod books;
+pub mod scenes;
+pub mod settings;
+
+/// Transação aninhável (SAVEPOINT). Sem `commit()`, desfaz ao sair do escopo.
+pub(crate) struct Atomic<'a> {
+    c: &'a Connection,
+    done: bool,
+}
+
+impl<'a> Atomic<'a> {
+    pub fn begin(c: &'a Connection) -> Result<Self, DbError> {
+        c.execute_batch("SAVEPOINT atomic")?;
+        Ok(Self { c, done: false })
+    }
+    pub fn commit(mut self) -> Result<(), DbError> {
+        self.c.execute_batch("RELEASE atomic")?;
+        self.done = true;
+        Ok(())
+    }
+}
+
+impl Drop for Atomic<'_> {
+    fn drop(&mut self) {
+        if !self.done {
+            let _ = self.c.execute_batch("ROLLBACK TO atomic; RELEASE atomic");
+        }
+    }
+}
+
+/// Reescreve `position` = 0..n-1 para os ids na ordem dada.
+pub(crate) fn write_positions(c: &Connection, table: &str, ids: &[String]) -> Result<(), DbError> {
+    let mut st = c.prepare(&format!("UPDATE {table} SET position=?1 WHERE id=?2"))?;
+    for (i, id) in ids.iter().enumerate() {
+        st.execute(rusqlite::params![i as i64, id])?;
+    }
+    Ok(())
+}
+
+/// Ids de `table` cujo `parent_col` = `parent`, em ordem de posição.
+pub(crate) fn ordered_ids(c: &Connection, table: &str, parent_col: &str, parent: &str) -> Result<Vec<String>, DbError> {
+    let mut st = c.prepare(&format!("SELECT id FROM {table} WHERE {parent_col}=?1 ORDER BY position"))?;
+    let ids = st.query_map([parent], |r| r.get(0))?.collect::<Result<Vec<String>, _>>()?;
+    Ok(ids)
+}
+
+/// Insere `id` em `ids` no índice dado, limitado ao intervalo válido (None = fim).
+pub(crate) fn insert_clamped(ids: &mut Vec<String>, id: String, index: Option<i64>) {
+    let i = index.map(|i| i.clamp(0, ids.len() as i64) as usize).unwrap_or(ids.len());
+    ids.insert(i, id);
+}
+
+pub fn new_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum DbError {
     #[error("WRONG_KEY")]
     WrongKey,
+    #[error("NOT_FOUND")]
+    NotFound,
+    #[error("CHAPTER_NOT_EMPTY")]
+    ChapterNotEmpty,
+    #[error("INVALID: {0}")]
+    Invalid(String),
     #[error("{0}")]
     Sql(#[from] rusqlite::Error),
 }
@@ -63,6 +125,14 @@ fn migrate(c: &Connection) -> Result<(), DbError> {
         c.execute_batch(&format!("BEGIN; {sql} PRAGMA user_version = {}; COMMIT;", i + 1))?;
     }
     Ok(())
+}
+
+/// Conexão em arquivo temporário para testes de outros módulos.
+#[cfg(test)]
+pub fn test_conn() -> (tempfile::TempDir, Connection) {
+    let d = tempfile::tempdir().unwrap();
+    let c = open(&d.path().join("t.db"), &MasterKey([1; 32])).unwrap();
+    (d, c)
 }
 
 #[cfg(test)]

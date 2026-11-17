@@ -1,4 +1,5 @@
 //! Assistente de IA: texto das cenas, provedor, ferramentas, contexto, conversa e agente de fundo.
+pub mod background;
 pub mod chat;
 pub mod context;
 pub mod provider;

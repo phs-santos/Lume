@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "tauri-app",
+  "productName": "MaDu",
   "version": "0.1.0",
   "identifier": "com.madu.app",
   "build": {

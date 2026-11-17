@@ -1,0 +1,94 @@
+@import "@fontsource/courier-prime/400.css";
+@import "@fontsource/courier-prime/400-italic.css";
+@import "@fontsource/courier-prime/700.css";
+@import "@fontsource/literata/400.css";
+@import "@fontsource/literata/400-italic.css";
+@import "@fontsource/literata/700.css";
+
+:root {
+  --paper: #e8ebee;      /* papel de cópia carbono */
+  --ink: #1c2333;        /* fita azul-preta */
+  --ribbon: #b42318;     /* fita vermelha: só cursor e ativo */
+  --platen: #25272c;     /* rolo */
+  --note: #646b78;       /* anotação a lápis */
+  --rule: #c9ced6;
+  --platen-ink: #d6d9de;
+  --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Courier Prime", "Courier New", monospace;
+  --font-serif: "Literata", Georgia, serif;
+  --font-text: var(--font-serif);
+  color-scheme: light;
+}
+
+:root[data-theme="escuro"] {
+  --paper: #1a1c20;
+  --ink: #d6d9de;
+  --ribbon: #e5574b;
+  --platen: #111215;
+  --note: #8a909b;
+  --rule: #33363d;
+  --platen-ink: #b9bdc4;
+  color-scheme: dark;
+}
+
+:root[data-font="mono"] { --font-text: var(--font-mono); }
+
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, textarea, select { font: inherit; color: inherit; }
+
+:focus-visible { outline: 2px solid var(--ribbon); outline-offset: 2px; }
+
+/* Folha central usada nas telas de cofre e biblioteca */
+.sheet {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 12vh 1.5rem 4rem;
+}
+.sheet h1 {
+  font: 400 2rem/1.2 var(--font-mono);
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.01em;
+}
+.sheet .lede { color: var(--note); margin: 0 0 2.5rem; max-width: 30rem; }
+
+.field { display: block; margin-bottom: 1.25rem; }
+.field span { display: block; font-size: 0.85rem; color: var(--note); margin-bottom: 0.3rem; }
+.field input, .field textarea, .field select {
+  width: 100%;
+  padding: 0.55rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+}
+.field input:focus, .field textarea:focus { outline: none; border-bottom-color: var(--ink); }
+.field textarea { resize: vertical; min-height: 6rem; line-height: 1.6; }
+
+.btn {
+  display: inline-block;
+  padding: 0.6rem 1.2rem;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 2px;
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn.quiet { background: transparent; color: var(--ink); border-color: var(--rule); }
+.link { background: none; border: 0; padding: 0; color: var(--note); text-decoration: underline; cursor: pointer; }
+
+.error { color: var(--ribbon); margin: 0 0 1rem; }
+.actions { display: flex; gap: 1rem; align-items: center; margin-top: 1.5rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}

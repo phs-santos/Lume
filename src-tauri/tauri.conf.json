@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "tauri-app",
-        "width": 800,
-        "height": 600
+        "title": "MaDu",
+        "width": 1200, "minWidth": 720,
+        "height": 820, "minHeight": 560
       }
     ],
     "security": {

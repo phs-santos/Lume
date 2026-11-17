@@ -24,7 +24,7 @@ function centerCaret() {
   if (!ed || !box) return;
   const caret = ed.view.coordsAtPos(ed.state.selection.head);
   const rect = box.getBoundingClientRect();
-  box.scrollTop += caret.bottom - (rect.top + rect.height * 0.5);
+  box.scrollTop += caret.bottom - (rect.top + rect.height * 0.66);
 }
 
 const editor = useEditor({
@@ -98,9 +98,9 @@ function forwardWheel(e: WheelEvent) {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 30px 60px -20px rgba(0, 0, 0, 0.55), inset 0 0 80px rgba(120, 100, 70, 0.06);
 }
 .sheet:not(:hover) { scrollbar-color: transparent transparent; }
-/* meia tela de folga em cima e embaixo: a primeira e a última linha também chegam ao centro */
-.page { padding: 50vh clamp(1.5rem, 7vw, 5.5rem); }
-.running-head { display: flex; flex-direction: column; align-items: center; gap: 0.7rem; margin: -2rem 0 3rem; }
+/* em cima, só uma margem de página; embaixo, folga curta: a linha do cursor fica a 2/3 da altura */
+.page { padding: 4.5rem clamp(1.5rem, 7vw, 5.5rem) 34vh; }
+.running-head { display: flex; flex-direction: column; align-items: center; gap: 0.7rem; margin: 0 0 3rem; }
 .running-head .chapter { font: italic 1.05rem/1.3 var(--font-serif); color: var(--note); text-align: center; }
 .running-head .rule { width: 2.5rem; height: 2px; background: var(--ribbon); opacity: 0.8; }
 .page-foot { margin-top: 3rem; text-align: right; font-size: 0.78rem; color: var(--note); }

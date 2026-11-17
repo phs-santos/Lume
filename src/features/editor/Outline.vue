@@ -192,18 +192,21 @@ h2 { font: 400 1.15rem/1.3 var(--font-mono); margin: 0; color: #fff; }
 .chapter-head.current { border-left: 2px solid var(--ribbon); background: rgba(255, 255, 255, 0.07); border-radius: 0 6px 6px 0; }
 .chapter-head.current .chapter-btn { color: #fff; }
 :root[data-theme="escuro"] .chapter-head.current .chapter-btn { color: var(--ink); }
-.chapter.single .chapter-head { padding: 0.35rem 0.25rem 0.35rem 0.4rem; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; }
+.chapter.single .chapter-head { padding: 0.35rem 0.6rem 0.35rem 0.4rem; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; }
 .chapter.single .chapter-head:hover { background: rgba(255, 255, 255, 0.05); }
 .chapter.single .chapter-head.current { border-left-color: var(--ribbon); }
 .chapter-btn { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
 .scene-rename { width: 100%; padding: 0.4rem 0.6rem 0.4rem 0.9rem; }
-.chapter-head { display: flex; align-items: baseline; gap: 0.5rem; }
+.chapter-head { display: flex; align-items: center; gap: 0.35rem; padding-right: 0.6rem; min-height: 1.6rem; }
 .chapter-head h3 { flex: 1; margin: 0; font-size: 0.85rem; font-weight: 600; cursor: default; }
 .rename { flex: 1; background: transparent; border: 0; border-bottom: 1px solid #8b919c; padding: 0; color: inherit; }
 .rename:focus { outline: none; }
 .icon { display: inline-flex; background: none; border: 0; border-radius: 6px; color: #8b919c; cursor: pointer; opacity: 0; padding: 0.2rem; }
 .icon:hover { color: #ff8a80; background: rgba(255, 255, 255, 0.06); }
-.chapter-head:hover .icon, .icon:focus-visible { opacity: 1; }
+/* ícones do capítulo só no hover/foco, no lugar da contagem: fora disso não ocupam espaço */
+.chapter-head .icon { display: none; opacity: 1; }
+.chapter-head:hover .icon, .chapter-head:focus-within .icon { display: inline-flex; }
+.chapter-head:hover .count, .chapter-head:focus-within .count { display: none; }
 
 .scenes { list-style: none; margin: 0.35rem 0 0; padding: 0; min-height: 0.75rem; }
 .scene { position: relative; }

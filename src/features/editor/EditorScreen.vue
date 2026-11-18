@@ -6,6 +6,8 @@ import { writeFile } from "@tauri-apps/plugin-fs";
 import { toDocx } from "../../lib/export/docx";
 import { toMarkdown } from "../../lib/export/markdown";
 import { toPdf } from "../../lib/export/pdf";
+import { toEpub } from "../../lib/export/epub";
+import { generateCover } from "../book/cover";
 import type { ExportBook } from "../../lib/export/types";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { aiSceneTouched, bookSetMode, proposalSetStatus, bookOutline, chapterCreate, inboxList, inboxTranscribePending, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRestore, sceneSave, sceneVersions, settingGet, settingSet } from "../../lib/api";
@@ -19,7 +21,7 @@ import Typewriter from "./Typewriter.vue";
 import { loadPrefs, prefs, setPref } from "./settings";
 import ShortcutsHelp from "./ShortcutsHelp.vue";
 import { onClickOutside } from "../../lib/clickOutside";
-import { imageAdd, imagesGc } from "../../lib/api";
+import { bookMetaGet, imageAdd, imageGet, imageMime, imagesGc } from "../../lib/api";
 import { prepareImage, toBase64 } from "./imageFile";
 import BookSheet from "../book/BookSheet.vue";
 import { coverColor } from "../../lib/coverColor";
@@ -164,10 +166,49 @@ async function restore(v: Version) {
 const exportScope = ref<"book" | "scene">("book");
 const exportTitles = ref(false);
 const FORMATS = {
+  epub: { name: "EPUB", ext: "epub" },
   docx: { name: "Word", ext: "docx" },
   pdf: { name: "PDF", ext: "pdf" },
   md: { name: "Markdown", ext: "md" },
 } as const;
+
+/** Bytes e tipo de uma imagem guardada. */
+async function storedImage(id: string) {
+  const [buf, mime] = await Promise.all([imageGet(id), imageMime(id)]);
+  return { mime, bytes: new Uint8Array(buf) };
+}
+
+/** EPUB: ficha do livro, capa (escolhida ou gerada) e as imagens que as cenas usam. */
+async function buildEpub(book: ExportBook) {
+  const meta = await bookMetaGet(props.bookId);
+  const cover = meta.cover_image_id
+    ? await storedImage(meta.cover_image_id)
+    : { mime: "image/png", bytes: await generateCover({ title: book.title, author: meta.author ?? "", color: coverColor(props.bookId) }) };
+  const ids = new Set<string>();
+  const scan = (json: unknown) => JSON.stringify(json).replace(/lume-img:([0-9a-f-]+)/g, (_, id) => (ids.add(id), ""));
+  book.chapters.forEach((c) => c.scenes.forEach((sc) => scan(sc.doc)));
+  const images = new Map<string, { mime: string; bytes: Uint8Array }>();
+  for (const id of ids) {
+    try {
+      images.set(id, await storedImage(id));
+    } catch {
+      /* imagem que sumiu: no EPUB fica só a legenda */
+    }
+  }
+  return toEpub(
+    {
+      ...book,
+      id: props.bookId,
+      author: meta.author ?? undefined,
+      synopsis: meta.synopsis ?? undefined,
+      dedication: meta.dedication ?? undefined,
+      cover,
+      back: meta.back_image_id ? await storedImage(meta.back_image_id).catch(() => undefined) : undefined,
+      images,
+    },
+    { sceneTitles: exportTitles.value },
+  );
+}
 
 async function exportBook(format: keyof typeof FORMATS) {
   exportMsg.value = "";
@@ -196,7 +237,13 @@ async function exportBook(format: keyof typeof FORMATS) {
     if (!path) return;
     const opts = { sceneTitles: exportTitles.value };
     const bytes =
-      format === "md" ? new TextEncoder().encode(toMarkdown(book, opts)) : format === "pdf" ? toPdf(book, opts) : await toDocx(book, opts);
+      format === "epub"
+        ? await buildEpub(book)
+        : format === "md"
+          ? new TextEncoder().encode(toMarkdown(book, opts))
+          : format === "pdf"
+            ? toPdf(book, opts)
+            : await toDocx(book, opts);
     await writeFile(path, bytes);
     exportMsg.value = `Exportado para ${path}`;
   } catch (e) {
@@ -522,10 +569,11 @@ onBeforeUnmount(() => {
           <button role="radio" :aria-checked="exportScope === 'scene'" :disabled="!scene" @click="exportScope = 'scene'">Só esta cena</button>
         </div>
         <label class="check-row"><input v-model="exportTitles" type="checkbox" /> Incluir o título de cada cena</label>
-        <p class="hint">Na ordem do sumário. Entre as cenas sai um separador (* * *).</p>
+        <p class="hint">Na ordem do sumário. Entre as cenas sai um separador (* * *). O EPUB leva capa, sumário, imagens e contracapa (para Kindle e leitores).</p>
         <button class="link sheet-link" @click="(bookSheet = true), (panel = 'none')">Ficha do livro: capa, autor, sinopse e dedicatória</button>
         <div class="actions">
-          <button class="btn" @click="exportBook('docx')">Word</button>
+          <button class="btn" @click="exportBook('epub')">EPUB</button>
+          <button class="btn quiet" @click="exportBook('docx')">Word</button>
           <button class="btn quiet" @click="exportBook('pdf')">PDF</button>
           <button class="btn quiet" @click="exportBook('md')">Markdown</button>
         </div>

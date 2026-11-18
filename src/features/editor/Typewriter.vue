@@ -118,6 +118,9 @@ function forwardWheel(e: WheelEvent) {
 }
 /* A folha: uma tira contínua de papel, como saindo do rolo da máquina. */
 .sheet {
+  /* zera o .sheet global das telas de cofre (dava 12vh de vazio no topo) */
+  margin: 0;
+  padding: 0;
   width: 100%;
   max-width: calc(68ch + 9rem);
   height: 100%;

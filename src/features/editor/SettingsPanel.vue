@@ -161,7 +161,7 @@ const usageText = computed(() => {
   position: absolute;
   top: 3.4rem;
   right: 1rem;
-  width: 18rem;
+  width: 20rem;
   padding: 1rem 1.25rem;
   background: var(--paper);
   border: 1px solid var(--rule);
@@ -174,7 +174,7 @@ const usageText = computed(() => {
   scrollbar-width: thin;
 }
 .row small { display: block; font-size: 0.74rem; color: var(--note); }
-.field select { padding: 0.35rem 0.4rem; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); font-size: 0.82rem; color: var(--ink); }
+.field select { width: 100%; font-family: var(--font-ui); padding: 0.35rem 0.4rem; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); font-size: 0.82rem; color: var(--ink); }
 .prices { margin: 0.2rem 0 0.3rem; font-size: 0.72rem; line-height: 1.4; color: var(--note); }
 .row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.45rem 0; }
 .row input { accent-color: var(--ribbon); width: 1rem; height: 1rem; }
@@ -188,7 +188,7 @@ const usageText = computed(() => {
 .ai h3 { margin: 0 0 0.3rem; font-size: 0.8rem; font-weight: 600; color: var(--note); text-transform: uppercase; letter-spacing: 0.05em; }
 .ai .row .link { margin: 0; }
 .key { display: flex; gap: 0.4rem; padding: 0.35rem 0; }
-.key input, .field input { flex: 1; min-width: 0; padding: 0.35rem 0.5rem; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); font-size: 0.82rem; }
+.key input, .field input { font-family: var(--font-ui); flex: 1; min-width: 0; padding: 0.35rem 0.5rem; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); font-size: 0.82rem; }
 .field { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.3rem 0; font-size: 0.82rem; color: var(--note); }
 .usage { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--note); }
 .err { margin: 0.3rem 0 0; font-size: 0.8rem; color: var(--ribbon); }

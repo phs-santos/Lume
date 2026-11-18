@@ -47,7 +47,7 @@ describe("imagem no texto", () => {
     insertFigure(e, "um", 10, 10);
     const pos = e.getJSON().content!.findIndex((n) => n.type === "figure");
     let at = 0;
-    e.state.doc.forEach((n, off, i) => { if (i === pos) at = off; });
+    e.state.doc.forEach((_n, off, i) => { if (i === pos) at = off; });
     e.commands.setNodeSelection(at);
     insertFigure(e, "dois", 10, 10);
     const srcs = e.getJSON().content!.filter((n) => n.type === "figure").map((n) => n.attrs!.src);

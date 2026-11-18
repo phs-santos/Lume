@@ -51,8 +51,12 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ## Gerar o instalador
 
-Para um release: suba a versão em `src-tauri/tauri.conf.json` e `package.json`, faça o commit e crie a tag
-(`git tag v0.2.0 && git push origin v0.2.0`). O GitHub Actions gera tudo e deixa um release em rascunho para publicar.
+Para lançar uma versão, no Claude Code: `/lancar-versao` (ou `/lancar-versao patch`, `minor`, `major`, `rascunho`).
+O agente `notas-da-versao` junta o que mudou desde a última versão e escreve as notas; o agente `lancador` roda os
+testes, sobe a versão (`scripts/bump-version.sh`), cria a tag, acompanha o build no GitHub Actions e publica.
+
+À mão: `scripts/bump-version.sh minor`, atualize o topo de `.github/release-notes.md`, faça o commit, crie a tag e
+envie (`git tag v0.2.0 && git push origin main v0.2.0`). O GitHub gera tudo num release em rascunho para publicar.
 
 Localmente, no macOS (gera `.dmg` em `src-tauri/target/release/bundle/dmg/`):
 

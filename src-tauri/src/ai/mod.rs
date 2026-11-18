@@ -3,6 +3,7 @@ pub mod background;
 pub mod chat;
 pub mod context;
 pub mod provider;
+pub mod stt;
 pub mod text;
 pub mod tools;
 #[cfg(test)]

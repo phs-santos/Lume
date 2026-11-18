@@ -18,6 +18,10 @@ describe("ideaText", () => {
 
 describe("transcriptLabel", () => {
   it("pendente", () => expect(transcriptLabel(audio())).toBe("Transcrevendo…"));
+  it("pendente depois de cair a rede mostra o aviso", () =>
+    expect(transcriptLabel(audio({ transcript_error: "Sem conexão com a Inworld; tento de novo depois." }))).toBe(
+      "Sem conexão com a Inworld; tento de novo depois.",
+    ));
   it("sem fala", () => expect(transcriptLabel(audio({ transcript_status: "pronta", transcript: "" }))).toBe("Não encontrei fala neste áudio."));
   it("pronta com texto não tem rótulo", () => expect(transcriptLabel(audio({ transcript_status: "pronta", transcript: "x" }))).toBeNull());
   it("erro mostra o motivo", () =>

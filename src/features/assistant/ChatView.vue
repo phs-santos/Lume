@@ -8,7 +8,7 @@ import { errorMessage } from "../../lib/errors";
 import type { ChatEvent, Conversation, Proposal } from "../../lib/types";
 
 const props = defineProps<{ bookId: string; sceneId: string | null; mode: string; draft?: string }>();
-const emit = defineEmits<{ insertProposal: [p: Proposal]; proposalAsScene: [p: Proposal]; discardProposal: [p: Proposal] }>();
+const emit = defineEmits<{ insertProposal: [p: Proposal]; proposalAsScene: [p: Proposal]; discardProposal: [p: Proposal]; draftUsed: [] }>();
 
 type Item =
   | { kind: "user" | "assistant"; id: string; text: string }
@@ -18,14 +18,15 @@ type Item =
 const hasKey = ref<boolean | null>(null);
 const keyDraft = ref("");
 const items = ref<Item[]>([]);
-const draft = ref(props.draft ?? "");
-// rascunho vindo de fora (ex.: "Conversar sobre esta ideia"): preenche o campo, não envia
-watch(
-  () => props.draft,
-  (d) => {
-    if (d) draft.value = d;
-  },
-);
+const draft = ref("");
+// rascunho vindo de fora (ex.: "Conversar sobre esta ideia"): preenche o campo, não envia,
+// e avisa que usou, para não voltar quando o painel for reaberto
+function takeDraft(d?: string) {
+  if (!d) return;
+  draft.value = d;
+  emit("draftUsed");
+}
+watch(() => props.draft, takeDraft);
 const busy = ref(false);
 const error = ref("");
 const showHistory = ref(false);
@@ -47,6 +48,7 @@ async function scrollDown() {
 }
 
 onMounted(async () => {
+  takeDraft(props.draft);
   try {
     hasKey.value = await aiKeyStatus();
     load(await aiConversation(props.bookId));

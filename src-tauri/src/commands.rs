@@ -310,8 +310,10 @@ pub fn ai_key_save(s: &AppState, key: &str) -> CmdResult<()> {
     }
     with_db(s, |c| {
         settings::setting_set(c, "ai.inworld_key", key)?;
-        // áudios que esperavam a chave voltam para a fila de transcrição
-        crate::db::inbox::inbox_wake_no_key(c).map(|_| ())
+        // áudios que esperavam a chave, ou que falharam por chave/crédito, voltam para a fila
+        use crate::ai::provider::ProviderError;
+        crate::db::inbox::inbox_wake_no_key(c)?;
+        crate::db::inbox::inbox_wake_errors(c, &[ProviderError::Auth.to_string(), ProviderError::Quota.to_string()]).map(|_| ())
     })
 }
 
@@ -526,6 +528,27 @@ mod tests {
         ai_key_save(&s, "chave-teste").unwrap();
         let st = with_db(&s, |c| crate::db::inbox::inbox_list(c)).unwrap()[0].transcript_status.clone();
         assert_eq!(st.as_deref(), Some("pendente"));
+    }
+
+    #[test]
+    fn saving_ai_key_retries_audio_that_failed_for_key_or_credit() {
+        use crate::ai::provider::ProviderError;
+        use crate::db::inbox;
+        let (_d, s) = state();
+        create_vault(&s, "ana", "x").unwrap();
+        with_db(&s, |c| {
+            for (id, err) in [("auth", ProviderError::Auth.to_string()), ("quota", ProviderError::Quota.to_string()), ("outro", "500 erro do servidor".into())] {
+                inbox::inbox_insert(c, id, "audio", "audio/mp4", &[1], 1, 1)?;
+                inbox::inbox_set_transcript(c, id, "erro", None, Some(&err))?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        ai_key_save(&s, "chave-nova").unwrap();
+        let st: std::collections::HashMap<_, _> = with_db(&s, inbox::inbox_list).unwrap().into_iter().map(|i| (i.id, i.transcript_status.unwrap())).collect();
+        assert_eq!(st["auth"], "pendente");
+        assert_eq!(st["quota"], "pendente");
+        assert_eq!(st["outro"], "erro");
     }
 
     use super::*;

@@ -208,11 +208,13 @@ const currentChapterTitle = computed(
 
 const typewriter = ref<{ insertAtEnd: (t: string) => boolean } | null>(null);
 
-/** Ideia do celular entra no fim da cena aberta, pelo editor (um ⌘Z desfaz). */
-function insertIdea(text: string) {
+/** Ideia do celular entra no fim da cena aberta, pelo editor (um ⌘Z desfaz). Devolve se entrou. */
+function insertIdea(text: string): boolean {
   if (!scene.value || !typewriter.value?.insertAtEnd(text)) {
     error.value = "Abra uma cena para inserir a ideia.";
+    return false;
   }
+  return true;
 }
 
 /** "Conversar sobre isso": abre o Assistente com a ideia já escrita no campo, sem enviar. */
@@ -410,7 +412,7 @@ onBeforeUnmount(() => {
         @close="panel = 'none'"
         @scene-created="onIdeaScene"
         @changed="refreshIdeas"
-        @insert-text="insertIdea"
+        :insert-into-scene="insertIdea"
         @discuss="discussIdea"
       />
 
@@ -443,6 +445,7 @@ onBeforeUnmount(() => {
       :mode="outline.book.ai_mode"
       :scene-titles="sceneTitles"
       :draft="assistantDraft"
+      @draft-used="assistantDraft = ''"
       @close="toggleAssistant"
       @open-scene="openScene"
       @insert-proposal="insertProposal"

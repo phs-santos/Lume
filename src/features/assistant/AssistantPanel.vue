@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { IconX } from "@tabler/icons-vue";
 import { aiEnable, aiFirstPass, aiFirstPassCancel, aiKeyStatus, aiPendingCount } from "../../lib/api";
 import type { Proposal } from "../../lib/types";
@@ -13,9 +13,18 @@ const emit = defineEmits<{
   insertProposal: [p: Proposal];
   proposalAsScene: [p: Proposal];
   discardProposal: [p: Proposal];
+  draftUsed: [];
 }>();
 
 const tab = ref<"chat" | "bible">("chat");
+// uma ideia mandada para a conversa abre a aba Conversa, mesmo se a Bíblia estava aberta
+watch(
+  () => props.draft,
+  (d) => {
+    if (d) tab.value = "chat";
+  },
+  { immediate: true },
+);
 const reading = ref<{ done: number; total: number } | null>(null);
 
 /** Primeira passada: lê só as cenas que ainda não têm resumo (ou mudaram). */
@@ -71,6 +80,7 @@ function cancelReading() {
       :scene-id="sceneId"
       :mode="mode"
       :draft="draft"
+      @draft-used="emit('draftUsed')"
       @insert-proposal="emit('insertProposal', $event)"
       @proposal-as-scene="emit('proposalAsScene', $event)"
       @discard-proposal="emit('discardProposal', $event)"

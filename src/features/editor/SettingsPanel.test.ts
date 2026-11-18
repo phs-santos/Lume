@@ -59,4 +59,10 @@ describe("Ajustes de IA", () => {
     expect(el.textContent).toContain("50 mil tokens");
     expect(el.textContent).toContain("2 min de transcrição este mês");
   });
+
+  it("menos de um minuto de transcrição já aparece como 1 min", async () => {
+    vi.mocked(api.aiUsage).mockResolvedValueOnce([{ month: "2026-11", model: "inworld/inworld-stt-1", input_tokens: 20_000, output_tokens: 0, cost: null }]);
+    const el = await mount();
+    expect(el.textContent).toContain("1 min de transcrição este mês");
+  });
 });

@@ -56,7 +56,7 @@ async function saveModels() {
 const STT_MODEL = "inworld/inworld-stt-1";
 const llmUsage = computed(() => usage.value.filter((u) => u.model !== STT_MODEL));
 const sttMinutes = computed(() =>
-  Math.round(usage.value.filter((u) => u.model === STT_MODEL).reduce((t, u) => t + u.input_tokens, 0) / 60_000),
+  Math.ceil(usage.value.filter((u) => u.model === STT_MODEL).reduce((t, u) => t + u.input_tokens, 0) / 60_000),
 );
 
 const usageText = computed(() => {

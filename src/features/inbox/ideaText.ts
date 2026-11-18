@@ -18,7 +18,8 @@ export function transcriptLabel(i: InboxItem): string | null {
     case "sem_chave":
       return "Configure a chave da IA nos Ajustes para transcrever.";
     default:
-      return "Transcrevendo…";
+      // pendente: pode estar esperando a rede voltar
+      return i.transcript_error ?? "Transcrevendo…";
   }
 }
 

@@ -159,4 +159,14 @@ describe("ChatView", () => {
     expect((el.querySelector("textarea") as HTMLTextAreaElement).value).toBe("Sobre esta ideia: «Marina foge.»\n\n");
     expect(api.aiSend).not.toHaveBeenCalled();
   });
+
+  it("avisa que usou o rascunho, para ele não voltar ao reabrir", async () => {
+    const used = vi.fn();
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    app = createApp(ChatView, { bookId: "b", sceneId: "s1", mode: "conselheira", draft: "Sobre esta ideia: «x»\n\n", onDraftUsed: used });
+    app.mount(el);
+    await flush();
+    expect(used).toHaveBeenCalled();
+  });
 });

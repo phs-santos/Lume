@@ -1,11 +1,13 @@
 //! Fila de transcrição dos áudios da caixa de ideias.
 
 use super::chat::month_of;
+use super::provider::ProviderError;
 use super::stt::{Transcriber, STT_MAX_BYTES, STT_MODEL};
 use crate::db::{ai, inbox};
 use crate::state::SharedDb;
 
 pub const TOO_LONG: &str = "Áudio longo demais para transcrever por enquanto.";
+pub const OFFLINE: &str = "Sem conexão com a Inworld; tento de novo depois.";
 
 /// Transcreve os áudios pendentes, um por vez. Tranca o banco só para ler o item e para gravar o resultado.
 /// `t = None` (sem chave) marca os pendentes como `sem_chave`. Devolve quantos ficaram `pronta`.
@@ -28,35 +30,63 @@ pub fn transcribe_pending(db: &SharedDb, t: Option<&dyn Transcriber>, now: i64) 
         Ok(())
     })?;
 
+    // ids pode crescer durante a rodada: áudio que chega (ou "Tentar de novo") entra na mesma passada
+    let _ = ids;
+    let mut tried = std::collections::HashSet::new();
     let mut ready = 0;
-    for id in ids {
-        let mut item: Option<(String, Vec<u8>)> = None;
+    loop {
+        let mut next: Option<(String, String, Vec<u8>)> = None;
         with(&mut |c| {
-            let mime = inbox::inbox_list(c).map_err(err)?.into_iter().find(|i| i.id == id).map(|i| i.mime);
-            if let Some(m) = mime {
-                item = Some((m, inbox::inbox_body(c, &id).map_err(err)?));
+            let id = inbox::inbox_pending_audio(c).map_err(err)?.into_iter().find(|id| !tried.contains(id));
+            if let Some(id) = id {
+                if let Some(mime) = inbox::inbox_mime(c, &id).map_err(err)? {
+                    next = Some((id.clone(), mime, inbox::inbox_body(c, &id).map_err(err)?));
+                }
+                tried.insert(id);
             }
             Ok(())
         })?;
-        let Some((mime, body)) = item else { continue }; // apagada no meio do caminho
+        let Some((id, mime, body)) = next else {
+            // nada pendente que ainda não tentamos nesta rodada
+            let mut more = false;
+            with(&mut |c| {
+                more = inbox::inbox_pending_audio(c).map_err(err)?.iter().any(|id| !tried.contains(id));
+                Ok(())
+            })?;
+            if more { continue } else { break }
+        };
         if body.len() > STT_MAX_BYTES {
-            with(&mut |c| inbox::inbox_set_transcript(c, &id, "erro", None, Some(TOO_LONG)).map_err(err))?;
+            with(&mut |c| skip_gone(inbox::inbox_set_transcript(c, &id, "erro", None, Some(TOO_LONG))))?;
             continue;
         }
         // rede sem o banco trancado
         let result = t.transcribe(&body, &mime, &vocab);
+        let mut saved = false;
         with(&mut |c| match &result {
             Ok(tr) => {
-                inbox::inbox_set_transcript(c, &id, "pronta", Some(&tr.text), None).map_err(err)?;
-                ai::usage_add(c, &month_of(now), STT_MODEL, tr.audio_ms, 0, None).map_err(err)
+                // a transcrição já foi paga: conta o uso mesmo que a ideia tenha sido apagada no meio
+                ai::usage_add(c, &month_of(now), STT_MODEL, tr.audio_ms, 0, None).map_err(err)?;
+                let r = inbox::inbox_set_transcript(c, &id, "pronta", Some(&tr.text), None);
+                saved = r.is_ok();
+                skip_gone(r)
             }
-            Err(e) => inbox::inbox_set_transcript(c, &id, "erro", None, Some(&e.to_string())).map_err(err),
+            // sem rede não é culpa do áudio: continua pendente e tenta de novo no próximo ciclo
+            Err(ProviderError::Network(_)) => skip_gone(inbox::inbox_set_transcript(c, &id, "pendente", None, Some(OFFLINE))),
+            Err(e) => skip_gone(inbox::inbox_set_transcript(c, &id, "erro", None, Some(&e.to_string()))),
         })?;
-        if result.is_ok() {
+        if saved {
             ready += 1;
         }
     }
     Ok(ready)
+}
+
+/// A ideia pode ter sido apagada enquanto a transcrição estava na rede: aí não há o que gravar.
+fn skip_gone(r: Result<(), crate::db::DbError>) -> Result<(), String> {
+    match r {
+        Ok(()) | Err(crate::db::DbError::NotFound) => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 /// Uma transcrição por vez para cada banco (o painel e o ciclo de fundo podem pedir juntos).
@@ -85,7 +115,6 @@ impl Drop for RunGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::provider::ProviderError;
     use crate::ai::stt::Transcript;
     use crate::db::{books, test_conn};
     use std::sync::{Arc, Mutex};
@@ -230,5 +259,65 @@ mod tests {
         assert_eq!(transcribe_pending(&db, Some(slow.as_ref()), NOW), Ok(0));
         assert_eq!(h.join().unwrap(), Ok(1));
         assert_eq!(slow.n(), 1);
+    }
+
+    #[test]
+    fn network_drop_stays_pending_with_a_note() {
+        let (_d, db) = shared();
+        with(&db, |c| inbox::inbox_insert(c, "a", "audio", "audio/mp4", &[1], 1, 1).unwrap());
+        let f = Fake::failing(|| ProviderError::Network("caiu".into()));
+        assert_eq!(transcribe_pending(&db, Some(&f), NOW), Ok(0));
+        assert_eq!(f.n(), 1); // não insiste na mesma rodada
+        let i = item(&db, "a");
+        assert_eq!(i.transcript_status.as_deref(), Some("pendente"));
+        assert_eq!(i.transcript_error.as_deref(), Some(OFFLINE));
+    }
+
+    #[test]
+    fn audio_that_arrives_during_a_run_is_picked_up_in_the_same_run() {
+        let (_d, db) = shared();
+        with(&db, |c| inbox::inbox_insert(c, "a", "audio", "audio/mp4", &[1], 1, 1).unwrap());
+        let db2 = db.clone();
+        let f = Fake {
+            calls: Mutex::new(vec![]),
+            result: Box::new(move || {
+                // chega outro áudio enquanto o primeiro está na rede
+                let g = db2.try_lock();
+                if let Ok(g) = g {
+                    let _ = inbox::inbox_insert(g.as_ref().unwrap(), "b", "audio", "audio/mp4", &[2], 2, 2);
+                }
+                Ok(Transcript { text: "ok".into(), audio_ms: 1 })
+            }),
+            pause: None,
+        };
+        assert_eq!(transcribe_pending(&db, Some(&f), NOW), Ok(2));
+        assert_eq!(item(&db, "b").transcript_status.as_deref(), Some("pronta"));
+    }
+
+    #[test]
+    fn deleting_an_item_mid_run_skips_it_and_keeps_going() {
+        let (_d, db) = shared();
+        with(&db, |c| {
+            inbox::inbox_insert(c, "a", "audio", "audio/mp4", &[1], 1, 1).unwrap();
+            inbox::inbox_insert(c, "b", "audio", "audio/mp4", &[2], 2, 1).unwrap();
+        });
+        let db2 = db.clone();
+        let first = std::sync::atomic::AtomicBool::new(true);
+        let f = Fake {
+            calls: Mutex::new(vec![]),
+            result: Box::new(move || {
+                if first.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                    let g = db2.lock().unwrap();
+                    inbox::inbox_delete(g.as_ref().unwrap(), "a").unwrap();
+                }
+                Ok(Transcript { text: "ok".into(), audio_ms: 1000 })
+            }),
+            pause: None,
+        };
+        assert_eq!(transcribe_pending(&db, Some(&f), NOW), Ok(1));
+        assert_eq!(item(&db, "b").transcript_status.as_deref(), Some("pronta"));
+        // a transcrição apagada já tinha sido paga: o uso conta as duas
+        let used = with(&db, |c| ai::usage_month(c, &month_of(NOW)).unwrap());
+        assert_eq!(used.iter().find(|u| u.model == STT_MODEL).unwrap().input_tokens, 2000);
     }
 }

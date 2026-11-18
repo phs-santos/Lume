@@ -137,6 +137,22 @@ pub fn inbox_set_transcript(c: &Connection, id: &str, status: &str, text: Option
     if n == 0 { Err(DbError::NotFound) } else { Ok(()) }
 }
 
+pub fn inbox_mime(c: &Connection, id: &str) -> Result<Option<String>, DbError> {
+    Ok(c.query_row("SELECT mime FROM inbox WHERE id=?1", [id], |r| r.get(0)).optional()?)
+}
+
+/// Volta para a fila os áudios que falharam com uma destas mensagens (ex.: chave inválida, sem crédito).
+pub fn inbox_wake_errors(c: &Connection, messages: &[String]) -> Result<usize, DbError> {
+    let mut n = 0;
+    for m in messages {
+        n += c.execute(
+            "UPDATE inbox SET transcript_status='pendente', transcript_error=NULL WHERE transcript_status='erro' AND transcript_error=?1",
+            [m],
+        )?;
+    }
+    Ok(n)
+}
+
 /// Sem chave de IA: os pendentes esperam como `sem_chave`.
 pub fn inbox_mark_no_key(c: &Connection) -> Result<usize, DbError> {
     Ok(c.execute("UPDATE inbox SET transcript_status='sem_chave' WHERE kind='audio' AND (transcript_status='pendente' OR transcript_status IS NULL)", [])?)

@@ -8,8 +8,8 @@ import { audioBlob } from "./audioUrl";
 import ConnectPhone from "./ConnectPhone.vue";
 import { aboutIdea, ideaText, transcriptLabel } from "./ideaText";
 
-const props = defineProps<{ current: SceneSummary | null; fallbackChapterId: string | null }>();
-const emit = defineEmits<{ close: []; sceneCreated: [id: string]; changed: []; insertText: [text: string]; discuss: [text: string] }>();
+const props = defineProps<{ current: SceneSummary | null; fallbackChapterId: string | null; insertIntoScene: (text: string) => boolean }>();
+const emit = defineEmits<{ close: []; sceneCreated: [id: string]; changed: []; discuss: [text: string] }>();
 
 const status = ref<RemoteStatus | null>(null);
 const items = ref<InboxItem[]>([]);
@@ -61,6 +61,14 @@ async function transcribe() {
   await load();
 }
 
+/** Inserida no fim da cena aberta: arquiva, para não entrar duas vezes. */
+async function insertHere(i: InboxItem) {
+  const text = ideaText(i);
+  if (!text || !props.insertIntoScene(text)) return;
+  await act(() => inboxArchive(i.id));
+  message.value = "Ideia inserida no fim da cena e arquivada.";
+}
+
 async function retry(i: InboxItem) {
   await act(() => inboxRetryTranscript(i.id));
   await transcribe();
@@ -99,7 +107,15 @@ onMounted(async () => {
   await load();
   if (status.value?.connected) await fetchNow();
 });
-onBeforeUnmount(() => Object.values(audio.value).forEach(URL.revokeObjectURL));
+const waiting = computed(() => items.value.some((i) => i.kind === "audio" && (i.transcript_status === "pendente" || i.transcript_status === null)));
+const poll = setInterval(() => {
+  if (waiting.value) void load();
+}, 5000);
+
+onBeforeUnmount(() => {
+  clearInterval(poll);
+  Object.values(audio.value).forEach(URL.revokeObjectURL);
+});
 </script>
 
 <template>
@@ -153,7 +169,7 @@ onBeforeUnmount(() => Object.values(audio.value).forEach(URL.revokeObjectURL));
           <div class="actions">
             <template v-if="ideaText(i) && i.status === 'nova'">
               <button class="link" @click="toScene(i)"><IconFilePlus :size="16" /> Virar cena aqui</button>
-              <button class="link" @click="emit('insertText', ideaText(i)!)"><IconRowInsertBottom :size="16" /> Inserir no fim da cena</button>
+              <button class="link" @click="insertHere(i)"><IconRowInsertBottom :size="16" /> Inserir no fim da cena</button>
               <button class="link" @click="emit('discuss', aboutIdea(ideaText(i)!))"><IconMessageCircle :size="16" /> Conversar sobre isso</button>
             </template>
             <button v-if="i.status === 'nova'" class="link" @click="act(() => inboxArchive(i.id))"><IconArchive :size="16" /> Arquivar</button>

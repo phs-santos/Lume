@@ -286,7 +286,7 @@ pub fn image_get(state: State<AppState>, id: String) -> CmdResult<tauri::ipc::Re
     with_db(&state, |c| imgdb::image_get(c, &id)).map(|(_, bytes)| tauri::ipc::Response::new(bytes))
 }
 
-db_cmd!(image_mime(id: String) -> String => |c| imgdb::image_get(c, &id).map(|(m, _)| m));
+db_cmd!(image_mime(id: String) -> String => |c| imgdb::image_mime(c, &id));
 db_cmd!(images_gc(book_id: String) -> usize => |c| imgdb::images_gc(c, &book_id));
 db_cmd!(book_meta_get(book_id: String) -> BookMeta => |c| imgdb::book_meta_get(c, &book_id));
 db_cmd!(book_meta_set(book_id: String, meta: BookMeta) -> () => |c| imgdb::book_meta_set(c, &book_id, &meta));

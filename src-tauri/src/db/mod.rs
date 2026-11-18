@@ -278,6 +278,27 @@ mod tests {
     }
 
     #[test]
+    fn migration_v5_runs_on_a_v4_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("livro.db");
+        {
+            let c = Connection::open(&p).unwrap();
+            let hex: String = key(7).0.iter().map(|b| format!("{b:02x}")).collect();
+            let v4: String = MIGRATIONS[..4].concat();
+            c.execute_batch(&format!("PRAGMA key = \"x'{hex}'\"; {v4} PRAGMA user_version = 4;")).unwrap();
+            insert_book(&c, "Antigo");
+        }
+        let c = open(&p, &key(7)).unwrap();
+        let v: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v as usize, MIGRATIONS.len());
+        // o livro antigo continua lá, com a ficha vazia, e já aceita imagens
+        let meta = images::book_meta_get(&c, "b1").unwrap();
+        assert_eq!(meta, images::BookMeta::default());
+        let id = images::image_add(&c, "b1", "image/png", &[1], 1, 1, 1).unwrap();
+        assert!(images::image_get(&c, &id).is_ok());
+    }
+
+    #[test]
     fn open_with_right_key_reads_back() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("livro.db");

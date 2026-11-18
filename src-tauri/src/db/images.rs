@@ -34,6 +34,11 @@ pub fn image_get(c: &Connection, id: &str) -> Result<(String, Vec<u8>), DbError>
         .ok_or(DbError::NotFound)
 }
 
+/// Só o tipo da imagem (sem ler os bytes).
+pub fn image_mime(c: &Connection, id: &str) -> Result<String, DbError> {
+    c.query_row("SELECT mime FROM images WHERE id=?1", [id], |r| r.get(0)).optional()?.ok_or(DbError::NotFound)
+}
+
 /// Ids citados como `lume-img:<id>` num texto (JSON de cena ou de versão).
 fn refs_in(text: &str, out: &mut HashSet<String>) {
     for part in text.split("lume-img:").skip(1) {
@@ -44,20 +49,18 @@ fn refs_in(text: &str, out: &mut HashSet<String>) {
     }
 }
 
-/// Apaga imagens do livro que ninguém usa: nem as cenas, nem as versões antigas, nem a ficha.
+/// Apaga imagens do livro que ninguém usa: nem as cenas, nem as versões antigas, nem as fichas.
+/// O "em uso" olha TODOS os livros: uma figura copiada de um livro e colada em outro continua viva.
 pub fn images_gc(c: &Connection, book_id: &str) -> Result<usize, DbError> {
     let mut used = HashSet::new();
-    let mut st = c.prepare(
-        "SELECT s.content_json FROM scenes s JOIN chapters ch ON ch.id=s.chapter_id WHERE ch.book_id=?1
-         UNION ALL
-         SELECT v.content_json FROM scene_versions v JOIN scenes s ON s.id=v.scene_id JOIN chapters ch ON ch.id=s.chapter_id WHERE ch.book_id=?1",
-    )?;
-    for json in st.query_map([book_id], |r| r.get::<_, String>(0))? {
+    let mut st = c.prepare("SELECT content_json FROM scenes WHERE content_json LIKE '%lume-img:%' UNION ALL SELECT content_json FROM scene_versions WHERE content_json LIKE '%lume-img:%'")?;
+    for json in st.query_map([], |r| r.get::<_, String>(0))? {
         refs_in(&json?, &mut used);
     }
-    let meta = book_meta_get(c, book_id)?;
-    used.extend(meta.cover_image_id);
-    used.extend(meta.back_image_id);
+    let mut st = c.prepare("SELECT cover_image_id FROM books WHERE cover_image_id IS NOT NULL UNION ALL SELECT back_image_id FROM books WHERE back_image_id IS NOT NULL")?;
+    for id in st.query_map([], |r| r.get::<_, String>(0))? {
+        used.insert(id?);
+    }
     let ids: Vec<String> = c
         .prepare("SELECT id FROM images WHERE book_id=?1")?
         .query_map([book_id], |r| r.get(0))?
@@ -110,6 +113,8 @@ mod tests {
         let id = image_add(&c, &b, "image/png", &[1, 2, 3], 10, 20, 1).unwrap();
         assert_eq!(image_get(&c, &id).unwrap(), ("image/png".to_string(), vec![1, 2, 3]));
         assert!(matches!(image_get(&c, "nao-existe"), Err(DbError::NotFound)));
+        assert_eq!(image_mime(&c, &id).unwrap(), "image/png");
+        assert!(matches!(image_mime(&c, "nao-existe"), Err(DbError::NotFound)));
     }
 
     #[test]
@@ -122,6 +127,20 @@ mod tests {
         assert_eq!(images_gc(&c, &b).unwrap(), 1);
         assert!(image_get(&c, &used).is_ok());
         assert!(image_get(&c, &loose).is_err());
+    }
+
+    #[test]
+    fn gc_keeps_image_of_book_a_pasted_into_book_b() {
+        let (_d, c) = test_conn();
+        let (a, sa) = book(&c);
+        let (b, sb) = book(&c);
+        let img = image_add(&c, &a, "image/png", &[1], 1, 1, 1).unwrap();
+        // a figura foi copiada do livro A e colada no B; depois saiu do A
+        scenes::scene_save(&c, &sb, &doc_with(&img), 0, 1).unwrap();
+        scenes::scene_save(&c, &sa, r#"{"type":"doc","content":[]}"#, 0, 1).unwrap();
+        assert_eq!(images_gc(&c, &a).unwrap(), 0);
+        assert!(image_get(&c, &img).is_ok(), "o livro B ainda usa a imagem");
+        let _ = b;
     }
 
     #[test]

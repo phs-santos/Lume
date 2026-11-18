@@ -2,6 +2,7 @@ pub mod ai;
 pub mod commands;
 pub mod db;
 pub mod import;
+pub mod profiles;
 pub mod remote;
 pub mod state;
 pub mod vault;
@@ -26,11 +27,16 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
-            app.manage(state::AppState::new(dir));
+            let st = state::AppState::new(dir);
+            profiles::restore_last(&st); // volta para o último usuário que entrou
+            app.manage(st);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::vault_status,
+            commands::profiles_list,
+            commands::profile_select,
+            commands::profile_new,
             commands::vault_create,
             commands::vault_unlock,
             commands::vault_recover,

@@ -2,6 +2,10 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type { AiModels, BibleEntry, ChatEvent, Conversation, ConversationView, Progress, Proposal, UsageRow } from "./types";
 import type { AiMode, Book, InboxItem, RemoteStatus, Chapter, Outline, Scene, Version, VaultStatus } from "./types";
 
+export interface Profile { id: string; nickname: string; active: boolean }
+export const profilesList = () => invoke<Profile[]>("profiles_list");
+export const profileSelect = (id: string) => invoke<void>("profile_select", { id });
+export const profileNew = () => invoke<string>("profile_new");
 export const vaultStatus = () => invoke<VaultStatus>("vault_status");
 export const vaultCreate = (nickname: string, password: string) =>
   invoke<string>("vault_create", { nickname, password });

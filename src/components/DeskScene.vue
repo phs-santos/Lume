@@ -88,11 +88,11 @@ withDefaults(defineProps<{ time: TimeOfDay; crop?: "bottom" | "middle" }>(), { c
     </g>
     <g transform="rotate(3 640 760)">
       <rect x="530" y="680" width="230" height="120" rx="3" class="paper" />
-      <rect x="555" y="705" width="150" height="7" rx="3" class="ink" />
-      <rect x="555" y="725" width="180" height="7" rx="3" class="ink" />
-      <rect x="555" y="745" width="120" height="7" rx="3" class="ink" />
-      <rect x="544" y="762" width="3" height="18" class="ribbon" />
-      <rect x="555" y="765" width="80" height="7" rx="3" class="ink" />
+      <rect x="555" y="705" width="150" height="7" rx="3" class="ink typed l1" />
+      <rect x="555" y="725" width="180" height="7" rx="3" class="ink typed l2" />
+      <rect x="555" y="745" width="120" height="7" rx="3" class="ink typed l3" />
+      <rect x="544" y="762" width="3" height="18" class="ribbon caret" />
+      <rect x="555" y="765" width="80" height="7" rx="3" class="ink typed l4" />
     </g>
 
     <!-- pilha de livros -->
@@ -172,5 +172,24 @@ withDefaults(defineProps<{ time: TimeOfDay; crop?: "bottom" | "middle" }>(), { c
   40% { opacity: 1; }
   100% { opacity: 0; transform: translateY(-18px); }
 }
-@media (prefers-reduced-motion: reduce) { .steam { animation: none; } }
+/* Ao abrir: as linhas da folha são "datilografadas" uma a uma, a fita pisca como cursor,
+   a luminária acende (à noite) e a cortina balança devagar. Um momento só, nada chamativo. */
+.typed { transform-box: fill-box; transform-origin: left center; transform: scaleX(0); animation: type 0.9s steps(18, end) forwards; }
+.l1 { animation-delay: 0.5s; }
+.l2 { animation-delay: 1.5s; }
+.l3 { animation-delay: 2.5s; }
+.l4 { animation-delay: 3.4s; animation-duration: 0.6s; }
+@keyframes type { to { transform: scaleX(1); } }
+.caret { animation: blink 1.1s steps(1, end) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.lamp-light, .bulb-line { opacity: 0; animation: lamp-on 1.2s ease-out 0.3s forwards; }
+@keyframes lamp-on { 0% { opacity: 0; } 18% { opacity: 0.8; } 26% { opacity: 0.15; } 40% { opacity: 1; } 100% { opacity: 1; } }
+.curtain { transform-box: fill-box; transform-origin: top center; animation: sway 7s ease-in-out infinite; }
+@keyframes sway { 0%, 100% { transform: skewX(0deg); } 50% { transform: skewX(-1.6deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .steam, .typed, .caret, .lamp-light, .bulb-line, .curtain { animation: none; }
+  .typed { transform: none; }
+  .lamp-light, .bulb-line { opacity: 1; }
+}
 </style>

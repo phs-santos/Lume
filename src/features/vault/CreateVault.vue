@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import VaultLayout from "../../components/VaultLayout.vue";
-import { computed, ref } from "vue";
-import { vaultCreate } from "../../lib/api";
+import PasswordInput from "../../components/PasswordInput.vue";
+import { computed, onMounted, ref } from "vue";
+import { profilesList, vaultCreate } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 
-const emit = defineEmits<{ done: [] }>();
+const emit = defineEmits<{ done: []; back: [] }>();
+// outro usuário já existe neste computador: dá para voltar sem criar cofre
+const canGoBack = ref(false);
+onMounted(async () => {
+  canGoBack.value = (await profilesList().catch(() => [])).length > 0;
+});
 const nickname = ref("");
 const password = ref("");
 const confirm = ref("");
@@ -80,15 +86,18 @@ const checked = computed(() => asked.value.every((i, k) => norm(answers.value[k]
         </label>
         <label class="field">
           <span>Senha</span>
-          <input v-model="password" type="password" autocomplete="new-password" aria-describedby="pw-rule" />
+          <PasswordInput v-model="password" autocomplete="new-password" aria-describedby="pw-rule" />
           <small id="pw-rule" :class="['help', { ok: password.length >= 8 }]">
             {{ password.length >= 8 ? "✓ " : "" }}Pelo menos 8 caracteres
           </small>
         </label>
-        <label class="field"><span>Repita a senha</span><input v-model="confirm" type="password" autocomplete="new-password" /></label>
+        <label class="field"><span>Repita a senha</span><PasswordInput v-model="confirm" autocomplete="new-password" /></label>
         <p v-if="error" class="error">{{ error }}</p>
         <p v-else-if="(nickname || password || confirm) && problem" class="why" data-test="why">{{ problem }}</p>
         <button class="btn wide" :disabled="!!problem || busy">Criar cofre</button>
+        <div v-if="canGoBack" class="actions center-back">
+          <button type="button" class="link" @click="emit('back')">Voltar para os usuários deste computador</button>
+        </div>
       </form>
     </div>
 
@@ -126,6 +135,7 @@ const checked = computed(() => asked.value.every((i, k) => norm(answers.value[k]
 </template>
 
 <style scoped>
+.center-back { justify-content: center; margin-top: 0.75rem; }
 .words {
   columns: 3;
   background: #fff;

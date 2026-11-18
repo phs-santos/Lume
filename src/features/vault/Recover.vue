@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import VaultLayout from "../../components/VaultLayout.vue";
+import PasswordInput from "../../components/PasswordInput.vue";
 import { computed, ref } from "vue";
 import { vaultRecover } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
@@ -40,8 +41,8 @@ async function recover() {
     <p class="lede">Digite as 24 palavras que você anotou e escolha uma senha nova.</p>
     <form @submit.prevent="recover">
       <label class="field"><span>As 24 palavras, separadas por espaço</span><textarea v-model="phrase" spellcheck="false" autofocus /></label>
-      <label class="field"><span>Nova senha</span><input v-model="password" type="password" autocomplete="new-password" /></label>
-      <label class="field"><span>Repita a nova senha</span><input v-model="confirm" type="password" autocomplete="new-password" /></label>
+      <label class="field"><span>Nova senha</span><PasswordInput v-model="password" autocomplete="new-password" /></label>
+      <label class="field"><span>Repita a nova senha</span><PasswordInput v-model="confirm" autocomplete="new-password" /></label>
       <p v-if="error" class="error">{{ error }}</p>
       <p v-else-if="phrase && confirm && problem" class="error">{{ problem }}</p>
       <div class="actions">

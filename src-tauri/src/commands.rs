@@ -38,7 +38,7 @@ pub fn create_vault(s: &AppState, nickname: &str, password: &str) -> CmdResult<S
     if s.db_path().exists() {
         return Err("DB_EXISTS".into());
     }
-    std::fs::create_dir_all(&s.dir).map_err(err)?;
+    std::fs::create_dir_all(s.profile_dir()).map_err(err)?;
     let (v, key, phrase) = vault::create(nickname, password).map_err(err)?;
     // Cria o banco antes de gravar o cofre; se o cofre não puder ser gravado, desfaz o banco.
     open_db(s, &key)?;
@@ -79,6 +79,19 @@ pub fn vault_nickname(state: State<AppState>) -> CmdResult<Option<String>> {
 
 pub fn lock_vault(s: &AppState) {
     *s.db.lock().unwrap() = None;
+}
+
+#[tauri::command]
+pub fn profiles_list(state: State<AppState>) -> Vec<crate::profiles::Profile> {
+    crate::profiles::list(&state)
+}
+#[tauri::command]
+pub fn profile_select(state: State<AppState>, id: String) -> CmdResult<()> {
+    crate::profiles::select(&state, &id)
+}
+#[tauri::command]
+pub fn profile_new(state: State<AppState>) -> CmdResult<String> {
+    crate::profiles::new_profile(&state)
 }
 
 #[tauri::command]

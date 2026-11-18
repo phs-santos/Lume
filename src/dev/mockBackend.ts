@@ -4,6 +4,9 @@ import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 type Row = Record<string, any>;
 const db = { books: [] as Row[], chapters: [] as Row[], scenes: [] as Row[], versions: [] as Row[], settings: {} as Record<string, string> };
 let status: "none" | "locked" | "unlocked" = "none";
+// usuários do computador (simulados): o ativo usa `status` acima
+const vaults: Record<string, { nickname: string; password: string }> = {};
+let activeProfile = "principal";
 const id = () => crypto.randomUUID();
 const EMPTY = '{"type":"doc","content":[{"type":"paragraph"}]}';
 const ordered = (rows: Row[]) => rows.sort((a, b) => a.position - b.position);
@@ -18,11 +21,24 @@ const chaptersOf = (b: string) => db.chapters.filter((c) => c.book_id === b);
 
 const handlers: Record<string, (a: any) => any> = {
   vault_status: () => status,
-  vault_create: () => ((status = "unlocked"), "abacate abaixo abalar abater abduzir abelha aberto abismo abotoar abranger abreviar abrigar abrupto absinto absoluto absurdo abutre acabado acalmar acampar acanhar acaso aceitar acelerar"),
-  vault_unlock: ({ password }) => { if (password !== "senha123") throw "WRONG_PASSWORD"; status = "unlocked"; },
+  vault_create: ({ nickname, password }: any) => ((vaults[activeProfile] = { nickname, password }), (status = "unlocked"), "abacate abaixo abalar abater abduzir abelha aberto abismo abotoar abranger abreviar abrigar abrupto absinto absoluto absurdo abutre acabado acalmar acampar acanhar acaso aceitar acelerar"),
+  vault_unlock: ({ password }) => { if (password !== (vaults[activeProfile]?.password ?? "senha123")) throw "WRONG_PASSWORD"; status = "unlocked"; },
   vault_recover: () => { status = "unlocked"; },
   vault_lock: () => { status = "locked"; },
-  vault_nickname: () => (status === "none" ? null : "henrilgrim"),
+  vault_nickname: () => vaults[activeProfile]?.nickname ?? null,
+  profiles_list: () => Object.entries(vaults).map(([id, v]) => ({ id, nickname: v.nickname, active: id === activeProfile })),
+  profile_new: () => {
+    if (status === "unlocked") throw "UNLOCKED";
+    activeProfile = crypto.randomUUID();
+    status = "none";
+    return activeProfile;
+  },
+  profile_select: ({ id }: any) => {
+    if (status === "unlocked") throw "UNLOCKED";
+    if (!vaults[id]) throw "NO_PROFILE";
+    activeProfile = id;
+    status = "locked";
+  },
   book_list: () => db.books,
   book_create: ({ title, aiMode }) => {
     const b = { id: id(), title, ai_mode: aiMode, created_at: Date.now() };

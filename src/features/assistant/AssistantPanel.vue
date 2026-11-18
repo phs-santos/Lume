@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { IconChevronDown, IconX } from "@tabler/icons-vue";
-import { aiEnable, aiFirstPass, aiFirstPassCancel, aiKeyStatus, aiPendingCount } from "../../lib/api";
+import { aiEnable, aiFirstPass, aiFirstPassCancel, aiKeyStatus, aiPendingCount, settingGet, settingSet } from "../../lib/api";
 import type { AiMode, Proposal } from "../../lib/types";
 import BibleView from "./BibleView.vue";
 import ChatView from "./ChatView.vue";
@@ -66,10 +66,44 @@ async function firstPass() {
   }
 }
 
+/**
+ * A IA só lê o livro (resumos e Bíblia) com permissão, uma vez por livro.
+ * Sem resposta ainda: o processamento de fundo fica pausado e o painel pergunta.
+ */
+const consentKey = () => `ai.consent.${props.bookId}`;
+const asking = ref<number | null>(null); // nº de cenas a ler, enquanto a pergunta está na tela
+const declined = ref(false);
+
+async function startReading() {
+  asking.value = null;
+  declined.value = false;
+  await settingSet(consentKey(), "sim");
+  await aiEnable(props.bookId);
+  await firstPass();
+}
+
+async function notNow() {
+  asking.value = null;
+  declined.value = true;
+  await settingSet(consentKey(), "nao");
+  await settingSet(`ai.enabled.${props.bookId}`, "0");
+}
+
 onMounted(async () => {
   try {
-    await aiEnable(props.bookId);
-    await firstPass();
+    if (!(await aiKeyStatus())) return;
+    const consent = await settingGet(consentKey());
+    if (consent === "sim") {
+      await aiEnable(props.bookId);
+      await firstPass();
+    } else if (consent === "nao") {
+      declined.value = true;
+    } else {
+      await settingSet(`ai.enabled.${props.bookId}`, "0"); // nada roda em segundo plano até ela responder
+      const pending = await aiPendingCount(props.bookId);
+      if (pending > 0) asking.value = pending;
+      else await startReading();
+    }
   } catch {
     /* sem chave ou sem rede: a conversa mostra o erro quando a pessoa usar */
   }
@@ -106,6 +140,18 @@ function cancelReading() {
       <button class="close" title="Fechar o assistente" aria-label="Fechar o assistente" @click="emit('close')"><IconX :size="16" stroke-width="1.75" /></button>
     </header>
 
+    <div v-if="asking" class="ask-read" role="region" aria-label="Ler o livro">
+      <p><strong>Quer que eu leia o livro?</strong> São {{ asking }} cenas. Eu monto os resumos e a Bíblia (personagens, lugares, fatos) para conversar sabendo da história. Usa a sua chave da Inworld.</p>
+      <div class="ask-actions">
+        <button class="read-yes" data-test="read-yes" @click="startReading">Ler o livro</button>
+        <button class="read-no" data-test="read-no" @click="notNow">Agora não</button>
+      </div>
+    </div>
+    <p v-else-if="declined && tab === 'bible' && !reading" class="ask-read slim">
+      A Bíblia não está sendo montada neste livro.
+      <button class="read-yes" data-test="read-later" @click="startReading">Ler o livro agora</button>
+    </p>
+
     <div v-if="reading" class="reading" role="status">
       <span>Lendo o livro… {{ reading.done }}/{{ reading.total || "…" }} cenas</span>
       <div class="bar"><div :style="{ width: reading.total ? `${(reading.done / reading.total) * 100}%` : '0%' }" /></div>
@@ -140,12 +186,20 @@ header { display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.6rem
 .mode { position: relative; }
 .mode-btn { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.2rem 0.5rem; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 999px; background: none; color: #c9cdd4; font-size: 0.74rem; cursor: pointer; }
 .mode-btn:hover { color: #fff; border-color: rgba(255, 255, 255, 0.25); }
-.mode-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 20; width: 15rem; padding: 0.3rem; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; background: #262b36; box-shadow: 0 16px 32px -12px rgba(0, 0, 0, 0.6); }
+/* ancorado pela direita: o botão fica perto da borda do painel */
+.mode-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; width: 15rem; padding: 0.3rem; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; background: #262b36; box-shadow: 0 16px 32px -12px rgba(0, 0, 0, 0.6); }
 .mode-menu button { display: flex; flex-direction: column; gap: 0.1rem; width: 100%; padding: 0.45rem 0.55rem; border: 0; border-radius: 6px; background: none; color: #e6e8ec; text-align: left; cursor: pointer; }
 .mode-menu button:hover { background: rgba(255, 255, 255, 0.07); }
 .mode-menu button[aria-checked="true"] strong::after { content: " ✓"; color: var(--ribbon); }
 .mode-menu strong { font-size: 0.82rem; }
 .mode-menu small { font-size: 0.72rem; color: #8b919c; line-height: 1.35; }
+.ask-read { margin: 0.75rem 0.75rem 0; padding: 0.8rem 0.9rem; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; background: rgba(255, 255, 255, 0.04); color: #c9ccd3; font-size: 0.82rem; line-height: 1.45; }
+.ask-read p { margin: 0 0 0.6rem; }
+.ask-read strong { color: #fff; font-weight: 500; }
+.ask-read.slim { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.ask-actions { display: flex; gap: 0.4rem; }
+.read-yes { padding: 0.35rem 0.75rem; border: 0; border-radius: 7px; background: var(--ribbon); color: #fff; cursor: pointer; font-size: 0.8rem; }
+.read-no { padding: 0.35rem 0.75rem; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 7px; background: none; color: #c9ccd3; cursor: pointer; font-size: 0.8rem; }
 .close { display: inline-flex; padding: 0.3rem; border: 0; border-radius: 6px; background: none; color: #8b919c; cursor: pointer; }
 .close:hover { color: #fff; background: rgba(255, 255, 255, 0.07); }
 .reading { display: grid; grid-template-columns: 1fr auto; gap: 0.3rem 0.6rem; align-items: center; margin: 0 0.9rem 0.5rem; padding: 0.5rem 0.6rem; border-radius: 8px; background: rgba(255, 255, 255, 0.04); font-size: 0.78rem; }

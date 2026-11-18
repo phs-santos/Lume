@@ -90,6 +90,8 @@ const handlers: Record<string, (a: any) => any> = {
   setting_set: ({ key, value }) => { db.settings[key] = value; },
 };
 
+let mockRead = false; // simula 3 cenas a ler até a primeira leitura
+
 // celular e caixa de entrada (simulados)
 let remote = { connected: false, nickname: "henrilgrim", url: "https://lume.codexolimpo.com" };
 let inbox: Row[] = [];
@@ -170,9 +172,9 @@ Object.assign(handlers, {
   },
   ai_retry: () => undefined,
   ai_scene_touched: () => undefined,
-  ai_first_pass: async ({ onProgress }: any) => { for (let i = 0; i <= 3; i++) { send(onProgress, { done: i, total: 3 }); await new Promise((r) => setTimeout(r, 300)); } },
+  ai_first_pass: async ({ onProgress }: any) => { for (let i = 0; i <= 3; i++) { send(onProgress, { done: i, total: 3 }); await new Promise((r) => setTimeout(r, 300)); } mockRead = true; },
   ai_first_pass_cancel: () => undefined,
-  ai_pending_count: () => 0,
+  ai_pending_count: () => (mockRead ? 0 : 3),
   bible_list: ({ bookId }: any) => ai.bible.filter((e) => e.book_id === bookId),
   bible_update: ({ id: eid, name, aliases, body, storyOrder }: any) => Object.assign(ai.bible.find((e) => e.id === eid)!, { name, aliases, body, story_order: storyOrder, edited_by_user: true }),
   bible_absorb_note: ({ id: eid, index }: any) => { const e = ai.bible.find((x) => x.id === eid)!; const [n] = e.ai_notes.splice(index, 1); e.body += "\n" + n.fact; return e; },

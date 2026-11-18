@@ -234,6 +234,25 @@ pub async fn book_import_epub(state: State<'_, AppState>, path: String, ai_mode:
     with_db(&state, |c| crate::import::import_book(c, &parsed, &ai_mode, now_ms()))
 }
 
+/// Transcreve os áudios pendentes da caixa de ideias (um por vez, em segundo plano).
+#[tauri::command]
+pub async fn inbox_transcribe_pending(state: State<'_, AppState>) -> CmdResult<usize> {
+    let db = state.db.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let key = {
+            let g = db.lock().unwrap();
+            let c = g.as_ref().ok_or_else(|| "LOCKED".to_string())?;
+            settings::setting_get(c, "ai.inworld_key").map_err(err)?.filter(|k| !k.trim().is_empty())
+        };
+        let stt = key.map(|key| crate::ai::stt::InworldStt { key });
+        crate::ai::transcribe::transcribe_pending(&db, stt.as_ref().map(|t| t as &dyn crate::ai::stt::Transcriber), now_ms())
+    })
+    .await
+    .map_err(err)?
+}
+
+db_cmd!(inbox_retry_transcript(id: String) -> () => |c| crate::db::inbox::inbox_retry_transcript(c, &id));
+
 /// Só uma sincronização por vez (o painel e o ciclo de fundo podem pedir juntos).
 static SYNCING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -289,7 +308,11 @@ pub fn ai_key_save(s: &AppState, key: &str) -> CmdResult<()> {
     if key.is_empty() {
         return Err("Chave vazia".into());
     }
-    with_db(s, |c| settings::setting_set(c, "ai.inworld_key", key))
+    with_db(s, |c| {
+        settings::setting_set(c, "ai.inworld_key", key)?;
+        // áudios que esperavam a chave voltam para a fila de transcrição
+        crate::db::inbox::inbox_wake_no_key(c).map(|_| ())
+    })
 }
 
 pub fn ai_key_present(s: &AppState) -> CmdResult<bool> {
@@ -491,6 +514,20 @@ db_cmd!(ai_pending_count(book_id: String) -> usize => |c| background::pending_sc
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn saving_ai_key_wakes_audio_waiting_for_key() {
+        let (_d, s) = state();
+        create_vault(&s, "ana", "x").unwrap();
+        with_db(&s, |c| {
+            crate::db::inbox::inbox_insert(c, "a", "audio", "audio/mp4", &[1], 1, 1)?;
+            crate::db::inbox::inbox_mark_no_key(c).map(|_| ())
+        })
+        .unwrap();
+        ai_key_save(&s, "chave-teste").unwrap();
+        let st = with_db(&s, |c| crate::db::inbox::inbox_list(c)).unwrap()[0].transcript_status.clone();
+        assert_eq!(st.as_deref(), Some("pendente"));
+    }
+
     use super::*;
 
     #[test]

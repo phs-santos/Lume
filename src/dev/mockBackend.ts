@@ -100,20 +100,32 @@ Object.assign(handlers, {
     remote.connected = true;
     inbox = [
       { id: "i1", kind: "text", mime: "text/plain", size: 80, created_at: Date.now() - 3600_000, status: "nova", text: "E se a Marina encontrar a carta antes do casamento?\nO irmão sabia de tudo." },
-      { id: "i2", kind: "audio", mime: "audio/webm", size: 2000, created_at: Date.now() - 600_000, status: "nova", text: null },
+      { id: "i2", kind: "audio", mime: "audio/webm", size: 2000, created_at: Date.now() - 600_000, status: "nova", text: null, transcript: null, transcript_status: "pendente", transcript_error: null },
+      { id: "i3", kind: "audio", mime: "audio/mp4", size: 900, created_at: Date.now() - 300_000, status: "nova", text: null, transcript: null, transcript_status: "erro", transcript_error: "Sem crédito ou limite atingido na Inworld" },
     ];
   },
   remote_disconnect: () => void (remote.connected = false),
   remote_sync: () => 0,
   inbox_list: () => [...inbox].sort((a, b) => b.created_at - a.created_at),
   inbox_body: () => new ArrayBuffer(0),
+  inbox_transcribe_pending: () => {
+    let n = 0;
+    for (const i of inbox)
+      if (i.kind === "audio" && i.transcript_status === "pendente") {
+        Object.assign(i, { transcript_status: "pronta", transcript: "Texto transcrito de exemplo: e se o Teodoro já soubesse da carta desde o começo?" });
+        n++;
+      }
+    return n;
+  },
+  inbox_retry_transcript: ({ id }: any) => void Object.assign(inbox.find((i) => i.id === id)!, { transcript_status: "pendente", transcript_error: null }),
   inbox_archive: ({ id }: any) => void (inbox.find((i) => i.id === id)!.status = "arquivada"),
   inbox_restore: ({ id }: any) => void (inbox.find((i) => i.id === id)!.status = "nova"),
   inbox_delete: ({ id }: any) => void (inbox = inbox.filter((i) => i.id !== id)),
   inbox_to_scene: ({ id, chapterId, index }: any) => {
     const it = inbox.find((i) => i.id === id)!;
-    if (it.kind !== "text") throw "NOT_TEXT";
-    const lines = it.text.split("\n").filter(Boolean);
+    const source = it.kind === "text" ? it.text : it.transcript_status === "pronta" ? it.transcript : null;
+    if (!source?.trim()) throw "NOT_TEXT";
+    const lines = source.split("\n").filter(Boolean);
     const s = handlers.scene_create({ chapterId, title: lines[0].slice(0, 60), index });
     s.content_json = JSON.stringify({ type: "doc", content: lines.map((t: string) => ({ type: "paragraph", content: [{ type: "text", text: t }] })) });
     it.status = "arquivada";

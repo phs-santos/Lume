@@ -49,6 +49,8 @@ export const inboxBody = (id: string) => invoke<ArrayBuffer>("inbox_body", { id 
 export const inboxArchive = (id: string) => invoke<void>("inbox_archive", { id });
 export const inboxRestore = (id: string) => invoke<void>("inbox_restore", { id });
 export const inboxDelete = (id: string) => invoke<void>("inbox_delete", { id });
+export const inboxTranscribePending = () => invoke<number>("inbox_transcribe_pending");
+export const inboxRetryTranscript = (id: string) => invoke<void>("inbox_retry_transcript", { id });
 export const inboxToScene = (id: string, chapterId: string, index?: number) =>
   invoke<Scene>("inbox_to_scene", { id, chapterId, index: index ?? null });
 

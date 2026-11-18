@@ -66,6 +66,8 @@ pub fn run() {
             commands::inbox_restore,
             commands::inbox_delete,
             commands::inbox_to_scene,
+            commands::inbox_transcribe_pending,
+            commands::inbox_retry_transcript,
             commands::ai_key_set,
             commands::ai_key_status,
             commands::ai_models_get,

@@ -32,6 +32,9 @@ export interface RemoteStatus { connected: boolean; nickname: string | null; url
 export interface InboxItem {
   id: string; kind: "audio" | "text"; mime: string; size: number; created_at: number;
   status: "nova" | "arquivada"; text: string | null;
+  transcript: string | null;
+  transcript_status: "pendente" | "pronta" | "erro" | "sem_chave" | null;
+  transcript_error: string | null;
 }
 
 // ---------- assistente de IA ----------

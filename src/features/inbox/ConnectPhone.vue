@@ -35,15 +35,15 @@ async function connect() {
   <form class="connect" @submit.prevent="connect">
     <h3>Receber ideias do celular</h3>
     <p class="hint">
-      No celular, abra <strong>{{ url.replace("https://", "") }}</strong> e entre com o mesmo apelido e a mesma senha do Lume.
-      O que você gravar lá chega aqui, cifrado do começo ao fim.
+      Anote ideias e grave áudios no celular, e eles aparecem aqui, cifrados do começo ao fim.
+      Primeiro conecte este computador; depois o Lume mostra um QR code para abrir no celular.
     </p>
-    <label class="field"><span>Apelido</span><input v-model="nickname" autocomplete="username" /></label>
+    <label class="field"><span>Seu nome no cofre</span><input v-model="nickname" autocomplete="username" /></label>
     <label class="field"><span>Senha do Lume</span><input v-model="password" type="password" autocomplete="current-password" /></label>
-    <label class="check"><input v-model="firstTime" type="checkbox" /> É a primeira vez (tenho um código de convite)</label>
-    <label v-if="firstTime" class="field"><span>Código de convite</span><input v-model="invite" autocomplete="off" /></label>
+    <label class="check"><input v-model="firstTime" type="checkbox" /> É a primeira vez que conecto (recebi um código de acesso)</label>
+    <label v-if="firstTime" class="field"><span>Código de acesso</span><input v-model="invite" autocomplete="off" /></label>
     <details class="advanced">
-      <summary>Endereço do servidor</summary>
+      <summary>Avançado</summary>
       <label class="field"><span>Endereço</span><input v-model="url" /></label>
     </details>
     <p v-if="error" class="error" role="alert">{{ error }}</p>

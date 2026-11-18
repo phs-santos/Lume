@@ -6,6 +6,7 @@ import { errorMessage } from "../../lib/errors";
 import type { InboxItem, RemoteStatus, SceneSummary } from "../../lib/types";
 import { audioBlob } from "./audioUrl";
 import ConnectPhone from "./ConnectPhone.vue";
+import PhoneQr from "./PhoneQr.vue";
 
 const props = defineProps<{ current: SceneSummary | null; fallbackChapterId: string | null }>();
 const emit = defineEmits<{ close: []; sceneCreated: [id: string]; changed: [] }>();
@@ -99,6 +100,7 @@ onBeforeUnmount(() => Object.values(audio.value).forEach(URL.revokeObjectURL));
     <ConnectPhone v-if="status && !status.connected" @connected="fetchNow" />
 
     <template v-else-if="status">
+      <PhoneQr v-if="status.url && status.nickname" :url="status.url" :nickname="status.nickname" />
       <div class="tabs" role="tablist">
         <button role="tab" :aria-selected="tab === 'nova'" @click="tab = 'nova'">Novas <span>{{ counts.nova }}</span></button>
         <button role="tab" :aria-selected="tab === 'arquivada'" @click="tab = 'arquivada'">Arquivadas <span>{{ counts.arquivada }}</span></button>

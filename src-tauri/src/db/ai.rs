@@ -230,6 +230,30 @@ pub fn bible_absorb_note(c: &Connection, id: &str, index: usize, now: i64) -> Re
     bible_get(c, id)
 }
 
+/// Nomes e apelidos de personagens e lugares (todos os livros), só letras, dígitos e espaços,
+/// sem repetir, no máximo 100: vocabulário para a transcrição acertar a grafia.
+pub fn bible_vocabulary(c: &Connection) -> Result<Vec<String>, DbError> {
+    let mut st = c.prepare("SELECT name, aliases_json FROM bible_entries WHERE kind IN('personagem','lugar') ORDER BY updated_at DESC")?;
+    let rows: Vec<(String, String)> = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?;
+    let clean = |s: &str| -> String {
+        let only: String = s.chars().map(|ch| if ch.is_alphanumeric() || ch == ' ' { ch } else { ' ' }).collect();
+        only.split_whitespace().collect::<Vec<_>>().join(" ")
+    };
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for (name, aliases) in rows {
+        let aliases: Vec<String> = serde_json::from_str(&aliases).unwrap_or_default();
+        for term in std::iter::once(name).chain(aliases) {
+            let t = clean(&term);
+            if !t.is_empty() && seen.insert(t.to_lowercase()) {
+                out.push(t);
+            }
+        }
+    }
+    out.truncate(100);
+    Ok(out)
+}
+
 pub fn bible_delete(c: &Connection, id: &str) -> Result<(), DbError> {
     c.execute("DELETE FROM bible_entries WHERE id=?1", [id])?;
     Ok(())
@@ -412,7 +436,7 @@ mod tests {
     fn migration_adds_ai_tables() {
         let (_d, c) = test_conn();
         let v: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 3);
+        assert!(v >= 3, "a migração da IA é a 3ª; depois dela podem vir outras");
         c.query_row("SELECT count(*) FROM bible_entries", [], |r| r.get::<_, i64>(0)).unwrap();
     }
 
@@ -521,5 +545,22 @@ mod tests {
         usage_add(&c, "2026-11", "m", 1, 1, None).unwrap();
         let u = usage_month(&c, "2026-11").unwrap();
         assert_eq!((u[0].input_tokens, u[0].output_tokens), (11, 6));
+    }
+
+    #[test]
+    fn vocabulary_has_people_and_places_clean_unique_and_capped() {
+        let (_d, c) = crate::db::test_conn();
+        let b = crate::db::books::book_create(&c, "L", "conselheira", 0).unwrap();
+        bible_upsert_ai(&c, &b.id, "personagem", "Rafa!", &["Rafael".into(), "rafa".into()], "f", None, None, 1).unwrap();
+        bible_upsert_ai(&c, &b.id, "lugar", "Itaipava", &[], "f", None, None, 1).unwrap();
+        bible_upsert_ai(&c, &b.id, "fato", "Segredo do app", &[], "f", None, None, 1).unwrap();
+        let v = bible_vocabulary(&c).unwrap();
+        assert!(v.contains(&"Rafa".to_string()) && v.contains(&"Rafael".to_string()) && v.contains(&"Itaipava".to_string()));
+        assert!(!v.iter().any(|x| x.contains("Segredo")));
+        assert_eq!(v.iter().filter(|x| x.to_lowercase() == "rafa").count(), 1);
+        for i in 0..120 {
+            bible_upsert_ai(&c, &b.id, "personagem", &format!("Pessoa {i}"), &[], "f", None, None, 1).unwrap();
+        }
+        assert_eq!(bible_vocabulary(&c).unwrap().len(), 100);
     }
 }

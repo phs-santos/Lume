@@ -172,6 +172,11 @@ CREATE TABLE ai_usage(
   cost REAL,
   PRIMARY KEY(month, model)
 );
+"#, r#"
+ALTER TABLE inbox ADD COLUMN transcript TEXT;
+ALTER TABLE inbox ADD COLUMN transcript_status TEXT CHECK(transcript_status IN('pendente','pronta','erro','sem_chave'));
+ALTER TABLE inbox ADD COLUMN transcript_error TEXT;
+UPDATE inbox SET transcript_status='pendente' WHERE kind='audio';
 "#];
 
 pub fn open(path: &Path, key: &MasterKey) -> Result<Connection, DbError> {
@@ -236,6 +241,23 @@ mod tests {
         let v: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
         assert_eq!(v, MIGRATIONS.len() as i64);
         c.execute("SELECT count(*) FROM inbox", []).ok();
+    }
+
+    #[test]
+    fn migration_v4_marks_existing_audio_as_pending() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("livro.db");
+        {
+            let c = Connection::open(&p).unwrap();
+            let hex: String = key(7).0.iter().map(|b| format!("{b:02x}")).collect();
+            c.execute_batch(&format!("PRAGMA key = \"x'{hex}'\"; {} {} {} PRAGMA user_version = 3;", MIGRATIONS[0], MIGRATIONS[1], MIGRATIONS[2])).unwrap();
+            c.execute("INSERT INTO inbox(id,kind,mime,body,created_at,received_at,status) VALUES('a','audio','audio/mp4',x'01',1,1,'nova')", []).unwrap();
+            c.execute("INSERT INTO inbox(id,kind,mime,body,created_at,received_at,status) VALUES('t','text','text/plain',x'01',1,1,'nova')", []).unwrap();
+        }
+        let c = open(&p, &key(7)).unwrap();
+        let st = |id: &str| c.query_row("SELECT transcript_status FROM inbox WHERE id=?1", [id], |r| r.get::<_, Option<String>>(0)).unwrap();
+        assert_eq!(st("a").as_deref(), Some("pendente"));
+        assert_eq!(st("t"), None);
     }
 
     #[test]

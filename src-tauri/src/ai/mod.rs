@@ -2,6 +2,7 @@
 pub mod background;
 pub mod chat;
 pub mod context;
+pub mod pricing;
 pub mod provider;
 pub mod text;
 pub mod tools;

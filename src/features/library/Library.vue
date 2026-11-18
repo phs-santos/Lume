@@ -107,13 +107,14 @@ onMounted(load);
             <span>{{ books.length ? "Novo livro" : "Comece seu primeiro livro" }}</span>
           </button>
         </li>
-        <li>
-          <button class="cover new" :disabled="importing" @click="importEpub">
-            <IconBookUpload :size="28" stroke-width="1.5" />
-            <span>{{ importing ? "Importando…" : "Importar EPUB" }}</span>
-          </button>
-        </li>
       </ul>
+      <p class="import">
+        Já tem um livro pronto em outro programa?
+        <button class="link" :disabled="importing" @click="importEpub">
+          <IconBookUpload :size="16" stroke-width="1.75" /> {{ importing ? "Importando…" : "Trazer de um arquivo EPUB" }}
+        </button>
+        <small>EPUB é o formato de livro digital que o Word, o Google Docs e o Scrivener conseguem gerar.</small>
+      </p>
     </main>
 
     <div v-if="creating" class="backdrop" @click.self="creating = false">
@@ -130,6 +131,7 @@ onMounted(load);
             <span><strong>{{ m.name }}</strong><small>{{ m.hint }}</small></span>
           </label>
         </fieldset>
+        <p class="mode-later">Dá para trocar depois, no painel do assistente ou em Ajustes.</p>
         <button class="btn wide" :disabled="!title.trim()">Criar livro</button>
       </form>
     </div>
@@ -147,6 +149,10 @@ onMounted(load);
 .lock { position: absolute; top: 1rem; right: 1rem; z-index: 1; background: color-mix(in srgb, var(--paper) 85%, transparent); color: var(--ink); }
 
 .shelf { padding: 2rem clamp(1.5rem, 6vw, 5rem) 4rem; }
+.import { margin: 2.5rem 0 0; font-size: 0.88rem; color: var(--note); }
+.import .link { display: inline-flex; align-items: center; gap: 0.3rem; }
+.import small { display: block; margin-top: 0.25rem; font-size: 0.78rem; }
+.mode-later { margin: -0.25rem 0 1rem; font-size: 0.8rem; color: var(--note); }
 .covers {
   list-style: none;
   margin: 0;

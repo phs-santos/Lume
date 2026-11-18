@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { book } from "./fixtures";
+import { book, withFigures } from "./fixtures";
 import { toPdf } from "./pdf";
 
 describe("toPdf", () => {
@@ -16,5 +16,14 @@ describe("toPdf", () => {
     const bytes = toPdf({ title: "T", chapters: [{ title: "C", scenes: [{ title: "S", doc: long }] }] });
     const text = new TextDecoder("latin1").decode(bytes);
     expect((text.match(/\/Type \/Page\b/g) ?? []).length).toBeGreaterThan(3);
+  });
+});
+
+describe("imagens no pdf", () => {
+  it("viram [Imagem: legenda]", () => {
+    const text = new TextDecoder("latin1").decode(toPdf(withFigures));
+    // o PDF escreve palavra por palavra
+    const words = (text.match(/\((.*?)\) Tj/g) ?? []).map((w) => w.slice(1, -4).trim()).join(" ");
+    expect(words).toContain("Antes. [Imagem: Mapa da serra] [Imagem] Depois.");
   });
 });

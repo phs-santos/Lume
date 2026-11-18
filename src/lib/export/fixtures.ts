@@ -17,3 +17,14 @@ export const book: ExportBook = {
     { title: "Capítulo vazio", scenes: [] },
   ],
 };
+
+/** Livro com imagens no texto (com e sem legenda). */
+export const withFigures: ExportBook = {
+  title: "Com imagens",
+  chapters: [
+    {
+      title: "Capítulo 1",
+      scenes: [{ title: "Cena", doc: doc(p(t("Antes.")), { type: "figure", attrs: { src: "lume-img:a", caption: "Mapa da serra" } }, { type: "figure", attrs: { src: "lume-img:b", caption: "" } }, p(t("Depois."))) }],
+    },
+  ],
+};

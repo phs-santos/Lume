@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import { toDocx } from "./docx";
-import { book } from "./fixtures";
+import { book, withFigures } from "./fixtures";
 
 describe("toDocx", () => {
   it("gera um .docx com o texto e os capítulos", async () => {
@@ -11,5 +11,14 @@ describe("toDocx", () => {
     expect(xml).toContain("— Você viu? *Não*, disse ela. #1 e 2_3");
     expect(xml).toContain("Capítulo 1");
     expect(xml).toContain("* * *");
+  });
+});
+
+describe("imagens no docx", () => {
+  it("viram [Imagem: legenda]", async () => {
+    const zip = await JSZip.loadAsync(await toDocx(withFigures));
+    const xml = await zip.file("word/document.xml")!.async("string");
+    expect(xml).toContain("[Imagem: Mapa da serra]");
+    expect(xml).toContain("[Imagem]");
   });
 });

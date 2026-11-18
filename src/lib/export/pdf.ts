@@ -1,3 +1,4 @@
+import { figureLabel } from "./docx";
 import type { JSONContent } from "@tiptap/core";
 import { jsPDF } from "jspdf";
 import type { ExportBook, ExportOptions } from "./types";
@@ -21,7 +22,11 @@ function words(nodes: JSONContent[] = []): Word[] {
 
 function paragraphsOf(doc: JSONContent): JSONContent[][] {
   const out: JSONContent[][] = [];
-  const walk = (n: JSONContent) => (n.type === "paragraph" ? out.push(n.content ?? []) : (n.content ?? []).forEach(walk));
+  const walk = (n: JSONContent): void => {
+    if (n.type === "paragraph") out.push(n.content ?? []);
+    else if (n.type === "figure") out.push([{ type: "text", text: figureLabel(n), marks: [{ type: "italic" }] }]);
+    else (n.content ?? []).forEach(walk);
+  };
   (doc.content ?? []).forEach(walk);
   return out;
 }

@@ -21,6 +21,10 @@ function inline(nodes: JSONContent[] = []): string {
 
 function block(n: JSONContent): string {
   switch (n.type) {
+    case "figure": {
+      const cap = String(n.attrs?.caption ?? "").trim();
+      return cap ? `[Imagem: ${escape(cap)}]` : "[Imagem]";
+    }
     case "paragraph":
       return inline(n.content);
     case "blockquote":

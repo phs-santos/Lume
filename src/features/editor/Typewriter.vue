@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { EditorContent, useEditor } from "@tiptap/vue-3";
+import { EditorContent, useEditor, VueNodeViewRenderer } from "@tiptap/vue-3";
 import { onBeforeUnmount, ref } from "vue";
 import { countWords } from "../../lib/wordcount";
 import { editorOptions } from "./editorConfig";
+import { Figure, insertFigure } from "./figure";
+import FigureView from "./FigureView.vue";
 import { playKey } from "./keySound";
 
 const props = defineProps<{ sceneId: string; contentJson: string; focusMode: boolean; keySound: boolean; chapterTitle: string; sceneTitle: string; words: number }>();
-const emit = defineEmits<{ change: [sceneId: string, json: string, words: number] }>();
+const emit = defineEmits<{ change: [sceneId: string, json: string, words: number]; imageFiles: [files: File[]] }>();
+
+/** Imagens coladas ou arrastadas: o editor de tela pede ao EditorScreen para guardar e inserir. */
+function imagesIn(list: FileList | null | undefined): File[] {
+  return [...(list ?? [])].filter((f) => f.type.startsWith("image/"));
+}
 const scroller = ref<HTMLElement | null>(null);
 
 function parse(json: string) {
@@ -30,8 +37,23 @@ function centerCaret() {
 const editor = useEditor({
   content: parse(props.contentJson),
   autofocus: "end",
-  ...editorOptions(),
+  ...editorOptions({ figure: Figure.extend({ addNodeView: () => VueNodeViewRenderer(FigureView) }) }),
   editorProps: {
+    handlePaste: (_view, e) => {
+      const files = imagesIn(e.clipboardData?.files);
+      if (!files.length) return false;
+      emit("imageFiles", files);
+      return true;
+    },
+    handleDrop: (view, e) => {
+      const files = imagesIn((e as DragEvent).dataTransfer?.files);
+      if (!files.length) return false;
+      // a imagem entra onde foi solta
+      const pos = view.posAtCoords({ left: (e as DragEvent).clientX, top: (e as DragEvent).clientY });
+      if (pos) editor.value?.commands.setTextSelection(pos.pos);
+      emit("imageFiles", files);
+      return true;
+    },
     attributes: { spellcheck: "true", lang: "pt-BR", "aria-label": "Texto da cena" },
     handleKeyDown: (_view, e) => {
       if (props.keySound && (e.key.length === 1 || e.key === "Enter" || e.key === "Backspace")) playKey();
@@ -68,6 +90,13 @@ function insertAtEnd(text: string): boolean {
   return true;
 }
 
+/** Imagem já guardada no banco: entra no ponto do cursor (um ⌘Z desfaz). */
+function insertImage(id: string, width: number, height: number): boolean {
+  if (!editor.value) return false;
+  insertFigure(editor.value, id, width, height);
+  return true;
+}
+
 /** Proposta no ponto do cursor (um ⌘Z desfaz). */
 function insertAtCursor(text: string): boolean {
   const ed = editor.value;
@@ -78,7 +107,7 @@ function insertAtCursor(text: string): boolean {
   return true;
 }
 
-defineExpose({ insertAtEnd, insertAtCursor });
+defineExpose({ insertImage, insertAtEnd, insertAtCursor });
 
 /** A roda do mouse sobre a mesa (fora da folha) também rola a folha. */
 function forwardWheel(e: WheelEvent) {

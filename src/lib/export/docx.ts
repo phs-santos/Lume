@@ -10,12 +10,20 @@ function runs(nodes: JSONContent[] = []): TextRun[] {
   });
 }
 
+/** Imagens ainda não vão para o Word: no lugar, a legenda entre colchetes. */
+export function figureLabel(n: JSONContent): string {
+  const cap = String(n.attrs?.caption ?? "").trim();
+  return cap ? `[Imagem: ${cap}]` : "[Imagem]";
+}
+
 /** Achata blocos (citação, listas) em parágrafos de texto corrido. */
 function paragraphs(doc: JSONContent): Paragraph[] {
   const out: Paragraph[] = [];
   const walk = (n: JSONContent) => {
     if (n.type === "paragraph") {
       out.push(new Paragraph({ children: runs(n.content), indent: { firstLine: 360 }, spacing: { line: 360 } }));
+    } else if (n.type === "figure") {
+      out.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: figureLabel(n), italics: true })] }));
     } else {
       (n.content ?? []).forEach(walk);
     }

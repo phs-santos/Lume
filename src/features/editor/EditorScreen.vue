@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { IconAdjustmentsHorizontal, IconArrowLeft, IconDownload, IconBulb, IconHistory, IconHelpCircle, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconSparkles } from "@tabler/icons-vue";
+import { IconAdjustmentsHorizontal, IconArrowLeft, IconDownload, IconBulb, IconHistory, IconHelpCircle, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconPhoto, IconSparkles } from "@tabler/icons-vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
@@ -19,6 +19,8 @@ import Typewriter from "./Typewriter.vue";
 import { loadPrefs, prefs, setPref } from "./settings";
 import ShortcutsHelp from "./ShortcutsHelp.vue";
 import { onClickOutside } from "../../lib/clickOutside";
+import { imageAdd, imagesGc } from "../../lib/api";
+import { prepareImage, toBase64 } from "./imageFile";
 import InboxPanel from "../inbox/InboxPanel.vue";
 import { isMac, label, matchShortcut, SHORTCUTS, type Action } from "./shortcuts";
 import { useAutosave } from "./useAutosave";
@@ -251,7 +253,35 @@ const currentChapterTitle = computed(
   () => outline.value?.chapters.find((c) => c.chapter.id === scene.value?.chapter_id)?.chapter.title ?? "",
 );
 
-const typewriter = ref<{ insertAtEnd: (t: string) => boolean; insertAtCursor: (t: string) => boolean } | null>(null);
+const typewriter = ref<{
+  insertAtEnd: (t: string) => boolean;
+  insertAtCursor: (t: string) => boolean;
+  insertImage: (id: string, w: number, h: number) => boolean;
+} | null>(null);
+
+/** Imagens coladas, arrastadas ou escolhidas: reduz, guarda cifrada e insere no cursor. */
+async function addImages(files: File[]) {
+  if (!scene.value) return void (error.value = "Abra uma cena para inserir a imagem.");
+  for (const f of files) {
+    try {
+      const img = await prepareImage(f);
+      const id = await imageAdd(props.bookId, img.mime, toBase64(img.bytes), img.width, img.height);
+      typewriter.value?.insertImage(id, img.width, img.height);
+    } catch (e) {
+      error.value = errorMessage(e);
+    }
+  }
+}
+
+const imagePicker = ref<HTMLInputElement | null>(null);
+function pickImage() {
+  imagePicker.value?.click();
+}
+async function onPicked(e: Event) {
+  const input = e.target as HTMLInputElement;
+  await addImages([...(input.files ?? [])]);
+  input.value = "";
+}
 
 /** Ideia do celular entra no fim da cena aberta, pelo editor (um ⌘Z desfaz). Devolve se entrou. */
 function insertIdea(text: string): boolean {
@@ -375,6 +405,7 @@ const unregisterFlusher = registerFlusher(flushSafely);
 const flushOnBlur = () => void flushSafely();
 
 onMounted(async () => {
+  void imagesGc(props.bookId).catch(() => {}); // tira do banco imagens que nenhuma cena ou versão usa
   window.addEventListener("keydown", onKey);
   window.addEventListener("blur", flushOnBlur);
   try {
@@ -430,6 +461,8 @@ onBeforeUnmount(() => {
           <button :class="['link', 'icon', { on: panel === 'ideas' }]" :title="`Ideias que chegaram do celular (${hint('ideas')})`" aria-label="Ideias" @click="togglePanel('ideas')">
             <IconBulb :size="18" stroke-width="1.75" /><span class="lbl">Ideias</span><span v-if="newIdeas" class="badge">{{ newIdeas }}</span>
           </button>
+          <button class="link icon" title="Inserir imagem no texto (ou cole/arraste na folha)" aria-label="Imagem" @click="pickImage"><IconPhoto :size="18" stroke-width="1.75" /><span class="lbl">Imagem</span></button>
+          <input ref="imagePicker" type="file" accept="image/*" multiple hidden @change="onPicked" />
           <button :class="['link', 'icon', { on: panel === 'versions' }]" :title="`Versões salvas desta cena (${hint('versions')})`" aria-label="Versões" @click="showVersions"><IconHistory :size="18" stroke-width="1.75" /><span class="lbl">Versões</span></button>
           <button :class="['link', 'icon', { on: panel === 'export' }]" :title="`Exportar (${hint('export')})`" aria-label="Exportar" @click="panel = panel === 'export' ? 'none' : 'export'"><IconDownload :size="18" stroke-width="1.75" /><span class="lbl">Exportar</span></button>
           <button :class="['link', 'icon', { on: panel === 'settings' }]" :title="`Ajustes (${hint('settings')})`" aria-label="Ajustes" @click="panel = panel === 'settings' ? 'none' : 'settings'"><IconAdjustmentsHorizontal :size="18" stroke-width="1.75" /><span class="lbl">Ajustes</span></button>
@@ -462,6 +495,7 @@ onBeforeUnmount(() => {
         :scene-title="scene.title"
         :words="scene.word_count"
         @change="onChange"
+        @image-files="addImages"
       />
       <p v-else-if="outline" class="empty">Crie uma cena no sumário para começar.</p>
 

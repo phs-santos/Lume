@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { book } from "./fixtures";
+import { book, withFigures } from "./fixtures";
 import { toMarkdown } from "./markdown";
 
 describe("toMarkdown", () => {
@@ -25,5 +25,12 @@ describe("toMarkdown", () => {
     const withTitles = toMarkdown(book, { sceneTitles: true });
     expect(withTitles).toContain("## Capítulo 1\n\n### Cena 1\n\n— Você viu?");
     expect(withTitles).toContain("* * *\n\n### Cena 2\n\nDepois.");
+  });
+});
+
+describe("imagens no markdown", () => {
+  it("viram [Imagem: legenda] no lugar certo", () => {
+    const md = toMarkdown(withFigures);
+    expect(md).toContain("Antes.\n\n[Imagem: Mapa da serra]\n\n[Imagem]\n\nDepois.");
   });
 });

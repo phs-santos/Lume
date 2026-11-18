@@ -382,6 +382,12 @@ fn conversation_view(c: &rusqlite::Connection, cv: Conversation) -> Result<Conve
 db_cmd!(ai_conversation(book_id: String) -> ConversationView => |c| { let cv = aidb::conversation_current(c, &book_id, now_ms())?; conversation_view(c, cv) });
 db_cmd!(ai_conversation_new(book_id: String) -> ConversationView => |c| { let cv = aidb::conversation_new(c, &book_id, now_ms())?; conversation_view(c, cv) });
 db_cmd!(ai_conversations(book_id: String) -> Vec<Conversation> => |c| aidb::conversation_list(c, &book_id));
+db_cmd!(ai_conversation_rename(id: String, title: String) -> () => |c| {
+    let t = title.trim();
+    if t.is_empty() { return Err(db::DbError::Invalid("título vazio".into())); }
+    aidb::conversation_set_title(c, &id, t)
+});
+db_cmd!(ai_conversation_delete(id: String) -> () => |c| aidb::conversation_delete(c, &id));
 db_cmd!(ai_conversation_open(id: String) -> ConversationView => |c| { let cv = aidb::conversation_open(c, &id)?; conversation_view(c, cv) });
 db_cmd!(bible_list(book_id: String) -> Vec<BibleEntry> => |c| aidb::bible_list(c, &book_id));
 db_cmd!(bible_update(id: String, name: String, aliases: Vec<String>, body: String, story_order: Option<i64>) -> BibleEntry => |c| aidb::bible_update_user(c, &id, &name, &aliases, &body, story_order, now_ms()));

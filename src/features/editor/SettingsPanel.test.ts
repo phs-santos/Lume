@@ -65,4 +65,34 @@ describe("Ajustes de IA", () => {
     const el = await mount();
     expect(el.textContent).toContain("1 min de transcrição este mês");
   });
+
+  it("modelo escolhido numa lista com nome e preço; 'Outro' abre campo livre", async () => {
+    const el = await mount();
+    const sel = el.querySelector('[data-test="chat-model"]') as HTMLSelectElement;
+    expect(sel.value).toBe("anthropic/claude-sonnet-5-5");
+    expect(el.textContent).toContain("US$ 2 / 10");
+    sel.value = "anthropic/claude-haiku-5-5";
+    sel.dispatchEvent(new Event("change"));
+    await flush();
+    expect(api.aiModelsSet).toHaveBeenCalledWith("anthropic/claude-haiku-5-5", "anthropic/claude-haiku-5-5");
+    sel.value = "__outro";
+    sel.dispatchEvent(new Event("change"));
+    await nextTick();
+    expect(el.querySelector('[aria-label="Nome do modelo da conversa"]')).not.toBeNull();
+  });
+
+  it("limite mensal é salvo; valor inválido avisa", async () => {
+    const el = await mount();
+    const inp = el.querySelector('[data-test="limit"]') as HTMLInputElement;
+    inp.value = "5,50";
+    inp.dispatchEvent(new Event("input"));
+    inp.dispatchEvent(new Event("change"));
+    await flush();
+    expect(api.settingSet).toHaveBeenCalledWith("ai.monthly_limit", "5.50");
+    inp.value = "abc";
+    inp.dispatchEvent(new Event("input"));
+    inp.dispatchEvent(new Event("change"));
+    await flush(); await nextTick();
+    expect(el.querySelector('[role="alert"]')!.textContent).toContain("dólares");
+  });
 });

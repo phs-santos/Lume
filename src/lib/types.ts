@@ -60,6 +60,6 @@ export type ChatEvent =
   | { type: "delta"; text: string }
   | { type: "note"; text: string }
   | { type: "proposal"; proposal: Proposal }
-  | { type: "done"; message_id: string }
+  | { type: "done"; message_id: string; input_tokens: number; output_tokens: number; cost: number | null }
   | { type: "error"; message: string };
 export interface Progress { done: number; total: number }

@@ -78,6 +78,8 @@ pub fn run() {
             commands::ai_conversation_new,
             commands::ai_conversations,
             commands::ai_conversation_open,
+            commands::ai_conversation_rename,
+            commands::ai_conversation_delete,
             commands::ai_send,
             commands::ai_retry,
             commands::ai_scene_touched,

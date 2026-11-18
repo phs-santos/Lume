@@ -2,6 +2,7 @@
 pub mod background;
 pub mod chat;
 pub mod context;
+pub mod pricing;
 pub mod provider;
 pub mod stt;
 pub mod text;

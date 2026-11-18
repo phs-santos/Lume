@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
-import { IconFilePlus, IconPlus, IconTrash } from "@tabler/icons-vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { IconDots, IconFilePlus, IconPlus } from "@tabler/icons-vue";
 import { VueDraggable } from "vue-draggable-plus";
-import { chapterCreate, chapterDelete, chapterRename, sceneCreate, sceneMove, sceneRename } from "../../lib/api";
+import { chapterCreate, chapterDelete, chapterRename, sceneCreate, sceneDelete, sceneMove, sceneRename } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 import { resolveDrop, singleScene } from "../../lib/outline";
 import type { Outline, SceneSummary } from "../../lib/types";
@@ -64,6 +64,61 @@ const addChapter = () =>
 
 const removeChapter = (id: string) => run(() => chapterDelete(id));
 
+/** Menu "⋯" de cada linha (também no clique direito): diz se é capítulo ou cena e reúne as ações. */
+interface MenuItem { label: string; run: () => void; danger?: boolean }
+const menu = ref<{ key: string; kind: string; items: MenuItem[]; y: number } | null>(null);
+const confirming = ref<string | null>(null);
+
+function openMenu(ev: MouseEvent, key: string, kind: string, items: MenuItem[]) {
+  confirming.value = null;
+  if (menu.value?.key === key && ev.type === "click") return void (menu.value = null);
+  const nav = (ev.currentTarget as HTMLElement).closest(".outline") as HTMLElement;
+  const box = nav.getBoundingClientRect();
+  const row = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+  // abre logo abaixo da linha, dentro do sumário
+  menu.value = { key, kind, items, y: row.bottom - box.top + nav.scrollTop + 2 };
+}
+
+/** Ações que apagam pedem um segundo clique. */
+function pick(item: MenuItem) {
+  if (item.danger && confirming.value !== item.label) return void (confirming.value = item.label);
+  menu.value = null;
+  confirming.value = null;
+  item.run();
+}
+
+const closeMenu = (e: Event) => {
+  if (!(e.target as HTMLElement).closest?.(".menu, .more")) menu.value = null;
+};
+const escMenu = (e: KeyboardEvent) => e.key === "Escape" && (menu.value = null);
+onMounted(() => {
+  document.addEventListener("mousedown", closeMenu);
+  document.addEventListener("keydown", escMenu);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener("mousedown", closeMenu);
+  document.removeEventListener("keydown", escMenu);
+});
+
+function chapterItems(chapterId: string, title: string): MenuItem[] {
+  return [
+    { label: "Nova cena no fim do capítulo", run: () => addScene(chapterId) },
+    { label: "Renomear capítulo", run: () => startRename(chapterId, title) },
+    { label: "Apagar capítulo", danger: true, run: () => removeChapter(chapterId) },
+  ];
+}
+
+function sceneItems(chapterId: string, s: SceneSummary, i: number, single: boolean): MenuItem[] {
+  return [
+    { label: "Nova cena depois desta", run: () => addScene(chapterId, i + 1) },
+    { label: "Nova cena antes desta", run: () => addScene(chapterId, i) },
+    { label: single ? "Renomear" : "Renomear cena", run: () => startRename(s.id, s.title) },
+    single
+      ? { label: "Apagar capítulo", danger: true, run: () => removeChapter(chapterId) }
+      : { label: "Apagar cena", danger: true, run: () => run(() => sceneDelete(s.id)) },
+  ];
+}
+
 async function startRename(id: string, title: string) {
   editing.value = id;
   draftTitle.value = title;
@@ -108,7 +163,13 @@ function finishRename(key: string, chapterId: string | null, sceneId: string | n
         </h3>
         <span class="count">{{ fmt(chapterWords(c.scenes)) }}</span>
         <button class="icon add-scene" title="Nova cena no fim do capítulo" aria-label="Nova cena no fim do capítulo" @click="addScene(c.chapter.id)"><IconPlus :size="15" stroke-width="2" /></button>
-        <button class="icon" title="Apagar capítulo" aria-label="Apagar capítulo" @click="removeChapter(c.chapter.id)"><IconTrash :size="15" stroke-width="1.75" /></button>
+        <button
+          class="more"
+          title="Mais ações do capítulo"
+          aria-label="Mais ações do capítulo"
+          :aria-expanded="menu?.key === c.chapter.id"
+          @click="openMenu($event, c.chapter.id, 'Capítulo', chapterItems(c.chapter.id, c.chapter.title))"
+        ><IconDots :size="15" stroke-width="2" /></button>
       </div>
 
       <VueDraggable
@@ -136,7 +197,11 @@ function finishRename(key: string, chapterId: string | null, sceneId: string | n
             @keydown.esc="editing = null"
             @blur="finishRename(s.id, singleScene(c) ? c.chapter.id : null, s.id)"
           />
-          <div v-else class="row hover-zone">
+          <div
+            v-else
+            class="row hover-zone"
+            @contextmenu.prevent="openMenu($event, s.id, singleScene(c) ? 'Capítulo de uma cena' : 'Cena', sceneItems(c.chapter.id, s, i, !!singleScene(c)))"
+          >
             <button
               class="scene-btn"
               title="Clique duas vezes (ou F2) para renomear"
@@ -147,14 +212,29 @@ function finishRename(key: string, chapterId: string | null, sceneId: string | n
               <span class="scene-title">{{ s.title }}</span>
               <span class="count">{{ fmt(s.word_count) }}</span>
             </button>
-            <template v-if="singleScene(c)">
-              <button class="icon add-scene" title="Nova cena no fim do capítulo" aria-label="Nova cena no fim do capítulo" @click="addScene(c.chapter.id)"><IconPlus :size="15" stroke-width="2" /></button>
-              <button class="icon" title="Apagar capítulo" aria-label="Apagar capítulo" @click="removeChapter(c.chapter.id)"><IconTrash :size="15" stroke-width="1.75" /></button>
-            </template>
+            <button v-if="singleScene(c)" class="icon add-scene" title="Nova cena depois desta" aria-label="Nova cena no fim do capítulo" @click="addScene(c.chapter.id)"><IconPlus :size="15" stroke-width="2" /></button>
+            <button
+              class="more"
+              :title="singleScene(c) ? 'Mais ações do capítulo' : 'Mais ações da cena'"
+              :aria-label="singleScene(c) ? 'Mais ações do capítulo' : 'Mais ações da cena'"
+              :aria-expanded="menu?.key === s.id"
+              @click="openMenu($event, s.id, singleScene(c) ? 'Capítulo de uma cena' : 'Cena', sceneItems(c.chapter.id, s, i, !!singleScene(c)))"
+            ><IconDots :size="15" stroke-width="2" /></button>
           </div>
         </li>
       </VueDraggable>
     </section>
+
+    <div v-if="menu" class="menu" role="menu" :style="{ top: `${menu.y}px` }">
+      <p class="menu-kind">{{ menu.kind }}</p>
+      <button
+        v-for="it in menu.items"
+        :key="it.label"
+        role="menuitem"
+        :class="['menu-item', { danger: it.danger, confirm: confirming === it.label }]"
+        @click="pick(it)"
+      >{{ confirming === it.label ? `Confirmar: ${it.label.toLowerCase()}` : it.label }}</button>
+    </div>
 
     <button class="add chapter-add" @click="addChapter"><IconFilePlus :size="16" stroke-width="1.75" /> Novo capítulo</button>
   </nav>
@@ -173,6 +253,29 @@ function finishRename(key: string, chapterId: string | null, sceneId: string | n
   font-size: 0.9rem;
 }
 .outline::-webkit-scrollbar { display: none; }
+.outline { position: relative; }
+/* "⋯": sempre visível, discreto; mais forte no hover */
+.more { display: inline-flex; flex: none; padding: 0.2rem; border: 0; border-radius: 6px; background: none; color: #8b919c; opacity: 0.55; cursor: pointer; }
+.more:hover, .more[aria-expanded="true"], .hover-zone:hover .more, .more:focus-visible { opacity: 1; color: #fff; background: rgba(255, 255, 255, 0.06); }
+.row .more { margin-right: 0.3rem; }
+.menu {
+  position: absolute;
+  right: 0.75rem;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  padding: 0.3rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: #262b36;
+  box-shadow: 0 16px 32px -12px rgba(0, 0, 0, 0.6);
+}
+.menu-kind { margin: 0.15rem 0.5rem 0.3rem; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: #8b919c; }
+.menu-item { padding: 0.4rem 0.5rem; border: 0; border-radius: 6px; background: none; color: #e6e8ec; text-align: left; font-size: 0.82rem; cursor: pointer; }
+.menu-item:hover, .menu-item:focus-visible { background: rgba(255, 255, 255, 0.08); }
+.menu-item.danger { color: #ff8a80; }
+.menu-item.confirm { background: rgba(255, 138, 128, 0.14); }
 /* o que rola some num degradê curto no topo, em vez de aparecer cortado pela metade */
 .outline { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 1rem); mask-image: linear-gradient(to bottom, transparent, #000 1rem); }
 .count { color: #8b919c; font-size: 0.78rem; font-variant-numeric: tabular-nums; }

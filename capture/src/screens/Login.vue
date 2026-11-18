@@ -4,7 +4,8 @@ import { login } from "../api";
 import { saveSession } from "../session";
 import Shell from "./Shell.vue";
 
-const nickname = ref("");
+// o QR code do computador abre esta página já com ?apelido=
+const nickname = ref(new URLSearchParams(location.search).get("apelido") ?? "");
 const password = ref("");
 const error = ref("");
 const busy = ref(false);

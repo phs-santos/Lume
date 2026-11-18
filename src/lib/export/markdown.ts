@@ -1,5 +1,5 @@
 import type { JSONContent } from "@tiptap/core";
-import type { ExportBook } from "./types";
+import type { ExportBook, ExportOptions } from "./types";
 
 export type { ExportBook };
 
@@ -37,9 +37,10 @@ function block(n: JSONContent): string {
 const docToMd = (doc: JSONContent) =>
   (doc.content ?? []).map(block).filter((b) => b.trim() !== "").join("\n\n");
 
-export function toMarkdown(b: ExportBook): string {
+export function toMarkdown(b: ExportBook, opts: ExportOptions = {}): string {
   const chapters = b.chapters.map((c) => {
-    const scenes = c.scenes.map((s) => docToMd(s.doc)).filter(Boolean);
+    const titled = (s: { title: string }) => opts.sceneTitles && s.title.trim() && s.title.trim() !== c.title.trim();
+    const scenes = c.scenes.map((s) => [titled(s) ? `### ${s.title}` : "", docToMd(s.doc)].filter(Boolean).join("\n\n")).filter(Boolean);
     return [`## ${c.title}`, scenes.join("\n\n* * *\n\n")].filter(Boolean).join("\n\n");
   });
   return `# ${b.title}\n\n${chapters.join("\n\n")}\n`;

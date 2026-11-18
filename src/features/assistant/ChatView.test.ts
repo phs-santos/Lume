@@ -7,6 +7,7 @@ const flush = async () => { for (let i = 0; i < 4; i++) { await new Promise((r) 
 const msg = (role: AiMessage["role"], content: string): AiMessage => ({ id: content, conversation_id: "cv", role, content, tool_name: null, created_at: 0 });
 const conv = (id: string, title = "Conversa") => ({ id, book_id: "b", title, rolling_summary: "", folded_count: 0, closed: false, created_at: 0, updated_at: 0 });
 
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => {}) }));
 vi.mock("../../lib/api", () => ({
   aiKeyStatus: vi.fn(async () => true),
   aiKeySet: vi.fn(async () => {}),
@@ -15,6 +16,8 @@ vi.mock("../../lib/api", () => ({
   aiConversations: vi.fn(async () => [conv("cv2", "Nova"), { ...conv("cv", "Sobre o Rafa"), closed: true }]),
   aiConversationOpen: vi.fn(async () => ({ conversation: conv("cv", "Sobre o Rafa"), messages: [msg("user", "antiga")] })),
   aiSend: vi.fn(),
+  aiConversationRename: vi.fn(async () => {}),
+  aiConversationDelete: vi.fn(async () => {}),
   proposalsPending: vi.fn(async () => []),
   aiRetry: vi.fn(),
 }));
@@ -67,7 +70,7 @@ describe("ChatView", () => {
     vi.mocked(api.proposalsPending).mockResolvedValueOnce([proposal]);
     vi.mocked(api.aiSend).mockImplementation(async (_b, _s, _t, on: (e: ChatEvent) => void) => {
       on({ type: "proposal", proposal });
-      on({ type: "done", message_id: "m" });
+      on({ type: "done", message_id: "m", input_tokens: 1000, output_tokens: 200, cost: 0.004 });
     });
     const el = await mount("conselheira");
     await type(el, "escreve");
@@ -84,7 +87,7 @@ describe("ChatView", () => {
       on({ type: "note", text: "consultei a cena X" });
       on({ type: "delta", text: "Ele " });
       on({ type: "delta", text: "sabia." });
-      on({ type: "done", message_id: "m9" });
+      on({ type: "done", message_id: "m9", input_tokens: 1000, output_tokens: 200, cost: 0.004 });
     });
     const el = await mount();
     await type(el, "o Rafa sabia?");
@@ -101,7 +104,7 @@ describe("ChatView", () => {
     });
     vi.mocked(api.aiRetry).mockImplementation(async (_b, _s, on: (e: ChatEvent) => void) => {
       on({ type: "delta", text: "Agora foi." });
-      on({ type: "done", message_id: "m2" });
+      on({ type: "done", message_id: "m2", input_tokens: 1000, output_tokens: 200, cost: 0.004 });
     });
     const el = await mount();
     await type(el, "pergunta");
@@ -119,7 +122,7 @@ describe("ChatView", () => {
       n++;
       if (n <= 2) {
         on({ type: "delta", text: `resposta ${n}` });
-        on({ type: "done", message_id: `m${n}` });
+        on({ type: "done", message_id: `m${n}`, input_tokens: 10, output_tokens: 2, cost: null });
       } else {
         on({ type: "delta", text: "meio" });
         on({ type: "error", message: "Sem conexão" });
@@ -168,5 +171,63 @@ describe("ChatView", () => {
     app.mount(el);
     await flush();
     expect(used).toHaveBeenCalled();
+  });
+
+  it("conversa vazia mostra perguntas prontas; clicar envia", async () => {
+    vi.mocked(api.aiConversation).mockResolvedValueOnce({ conversation: conv("cv"), messages: [] });
+    vi.mocked(api.aiSend).mockImplementation(async () => {});
+    const el = await mount();
+    const chips = el.querySelectorAll('[data-test="suggestion"]');
+    expect(chips.length).toBeGreaterThan(2);
+    (chips[0] as HTMLButtonElement).click();
+    await flush();
+    expect(api.aiSend).toHaveBeenCalledWith("b", "s1", chips[0].textContent!.trim(), expect.any(Function));
+  });
+
+  it("cada resposta mostra tokens e custo estimado", async () => {
+    vi.mocked(api.aiSend).mockImplementation(async (_b, _s, _t, on: (e: ChatEvent) => void) => {
+      on({ type: "delta", text: "ok" });
+      on({ type: "done", message_id: "m", input_tokens: 5000, output_tokens: 200, cost: 0.0123 });
+    });
+    const el = await mount();
+    await type(el, "pergunta");
+    expect(el.querySelector('[data-test="meta"]')!.textContent).toBe("5,2 mil tokens · ~US$ 0,01");
+  });
+
+  it("histórico: renomear e apagar (com confirmação)", async () => {
+    const el = await mount();
+    (el.querySelector('[data-test="history"]') as HTMLButtonElement).click();
+    await flush();
+    (el.querySelectorAll('[data-test="conv-rename"]')[1] as HTMLButtonElement).click();
+    await flush();
+    const inp = el.querySelector("#conv-rename-cv") as HTMLInputElement;
+    inp.value = "Sobre a Bia";
+    inp.dispatchEvent(new Event("input"));
+    inp.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    expect(api.aiConversationRename).toHaveBeenCalledWith("cv", "Sobre a Bia");
+    expect(el.querySelector(".history")!.textContent).toContain("Sobre a Bia");
+    const del = () => el.querySelectorAll('[data-test="conv-delete"]')[1] as HTMLButtonElement;
+    del().click();
+    await flush();
+    expect(api.aiConversationDelete).not.toHaveBeenCalled();
+    del().click();
+    await flush();
+    expect(api.aiConversationDelete).toHaveBeenCalledWith("cv");
+    expect(el.querySelectorAll(".conv-row")).toHaveLength(1);
+  });
+
+  it("proposta diz a cena de destino e pode entrar no cursor", async () => {
+    vi.mocked(api.proposalsPending).mockResolvedValueOnce([proposal]);
+    const got: unknown[][] = [];
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    app = createApp(ChatView, { bookId: "b", sceneId: "s1", mode: "coautora", sceneTitles: { s1: "Linha 340" }, onInsertProposal: (...a: unknown[]) => got.push(a) });
+    app.mount(el);
+    await flush();
+    expect(el.querySelector(".proposal-label")!.textContent).toContain("Linha 340");
+    (el.querySelector('[data-test="p-cursor"]') as HTMLButtonElement).click();
+    await flush();
+    expect(got[0][1]).toBe("cursor");
   });
 });

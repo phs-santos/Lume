@@ -340,6 +340,14 @@ pub fn conversation_set_title(c: &Connection, id: &str, title: &str) -> Result<(
     Ok(())
 }
 
+/// Apaga a conversa e as mensagens; propostas dela ficam sem conversa.
+pub fn conversation_delete(c: &Connection, id: &str) -> Result<(), DbError> {
+    if c.execute("DELETE FROM ai_conversations WHERE id=?1", [id])? == 0 {
+        return Err(DbError::NotFound);
+    }
+    Ok(())
+}
+
 pub fn conversation_set_summary(c: &Connection, id: &str, summary: &str, folded_count: i64) -> Result<(), DbError> {
     c.execute("UPDATE ai_conversations SET rolling_summary=?2, folded_count=?3 WHERE id=?1", params![id, summary, folded_count])?;
     Ok(())
@@ -409,6 +417,11 @@ pub fn usage_add(c: &Connection, month: &str, model: &str, input_tokens: i64, ou
         params![month, model, input_tokens, output_tokens, cost],
     )?;
     Ok(())
+}
+
+/// Gasto estimado do mês, em US$.
+pub fn usage_cost_month(c: &Connection, month: &str) -> Result<f64, DbError> {
+    Ok(c.query_row("SELECT COALESCE(SUM(cost),0) FROM ai_usage WHERE month=?1", [month], |r| r.get(0))?)
 }
 
 pub fn usage_month(c: &Connection, month: &str) -> Result<Vec<UsageRow>, DbError> {
@@ -495,6 +508,19 @@ mod tests {
         scenes::scene_delete(&c, &s).unwrap();
         assert_eq!(bible_list(&c, &b).unwrap()[0].source_scene_id, None);
         assert_eq!(digest_get(&c, &s).unwrap(), None);
+    }
+
+    #[test]
+    fn conversation_delete_removes_it_and_its_messages() {
+        let (_d, c) = test_conn();
+        let (b, _) = book(&c);
+        let cv = conversation_current(&c, &b, 1).unwrap();
+        message_add(&c, &cv.id, "user", "oi", None, 1).unwrap();
+        conversation_delete(&c, &cv.id).unwrap();
+        assert!(conversation_list(&c, &b).unwrap().is_empty());
+        let n: i64 = c.query_row("SELECT COUNT(*) FROM ai_messages", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0);
+        assert!(matches!(conversation_delete(&c, &cv.id), Err(DbError::NotFound)));
     }
 
     #[test]

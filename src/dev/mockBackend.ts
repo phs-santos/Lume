@@ -18,7 +18,7 @@ const chaptersOf = (b: string) => db.chapters.filter((c) => c.book_id === b);
 
 const handlers: Record<string, (a: any) => any> = {
   vault_status: () => status,
-  vault_create: () => ((status = "unlocked"), "abandon ability able about above absent absorb abstract absurd abuse access accident account accuse achieve acid acoustic acquire across act action actor actress actual"),
+  vault_create: () => ((status = "unlocked"), "abacate abaixo abalar abater abduzir abelha aberto abismo abotoar abranger abreviar abrigar abrupto absinto absoluto absurdo abutre acabado acalmar acampar acanhar acaso aceitar acelerar"),
   vault_unlock: ({ password }) => { if (password !== "senha123") throw "WRONG_PASSWORD"; status = "unlocked"; },
   vault_recover: () => { status = "unlocked"; },
   vault_lock: () => { status = "locked"; },
@@ -148,11 +148,13 @@ Object.assign(handlers, {
   ai_key_status: () => ai.key,
   ai_models_get: () => ai.models,
   ai_models_set: ({ chat, background }: any) => void (ai.models = { chat, background }),
-  ai_usage: () => (ai.key ? [{ month: "2026-11", model: ai.models.chat, input_tokens: 48200, output_tokens: 3100, cost: null }] : []),
+  ai_usage: () => (ai.key ? [{ month: "2026-11", model: ai.models.chat, input_tokens: 48200, output_tokens: 3100, cost: 0.13 }] : []),
   ai_enable: () => undefined,
   ai_conversation: ({ bookId }: any) => view(curConv(bookId)),
   ai_conversation_new: ({ bookId }: any) => { ai.conv.forEach((c) => c.book_id === bookId && (c.closed = true)); return view(curConv(bookId)); },
   ai_conversations: ({ bookId }: any) => ai.conv.filter((c) => c.book_id === bookId),
+  ai_conversation_rename: ({ id: cid, title }: any) => void (ai.conv.find((x) => x.id === cid)!.title = title),
+  ai_conversation_delete: ({ id: cid }: any) => { ai.conv = ai.conv.filter((x) => x.id !== cid); ai.msgs = ai.msgs.filter((m) => m.conversation_id !== cid); },
   ai_conversation_open: ({ id: cid }: any) => { const c = ai.conv.find((x) => x.id === cid)!; ai.conv.forEach((x) => x.book_id === c.book_id && (x.closed = true)); c.closed = false; return view(c); },
   ai_send: async ({ bookId, text, onEvent }: any) => {
     const c = curConv(bookId);
@@ -164,7 +166,7 @@ Object.assign(handlers, {
     for (const w of answer.split(/(?<= )/)) { await new Promise((r) => setTimeout(r, 25)); send(onEvent, { type: "delta", text: w }); }
     const m = addMsg(c, "assistant", answer);
     if (!ai.bible.length) ai.bible.push({ id: id(), book_id: bookId, kind: "personagem", name: "Rafa", aliases: ["Rafael"], body: "Programador, escreve de madrugada.", ai_notes: [], story_order: null, source_scene_id: db.scenes[0]?.id ?? null, edited_by_user: false, updated_at: Date.now() });
-    send(onEvent, { type: "done", message_id: m.id });
+    send(onEvent, { type: "done", message_id: m.id, input_tokens: 5200, output_tokens: 140, cost: 0.0118 });
   },
   ai_retry: () => undefined,
   ai_scene_touched: () => undefined,
@@ -188,7 +190,9 @@ export function installMockBackend() {
     ["Lugar de Sempre", "Linha 340", "A Porta do Elevador"].forEach((t) => {
       const ch = handlers.chapter_create({ bookId: b.id, title: t });
       const s = handlers.scene_create({ chapterId: ch.id, title: t });
-      s.content_json = JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "A tela do notebook é a única luz do quarto. Já são quase duas da manhã e eu ainda estou aqui." }] }] });
+      const text = "A tela do notebook é a única luz do quarto. Já são quase duas da manhã e eu ainda estou aqui.";
+      s.content_json = JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] });
+      s.word_count = text.split(/\s+/).length;
     });
     ai.key = true;
     db.settings["assistant_open"] = "1";

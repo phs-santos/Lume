@@ -7,6 +7,7 @@ import type { InboxItem, RemoteStatus, SceneSummary } from "../../lib/types";
 import { audioBlob } from "./audioUrl";
 import ConnectPhone from "./ConnectPhone.vue";
 import { aboutIdea, ideaText, transcriptLabel } from "./ideaText";
+import PhoneQr from "./PhoneQr.vue";
 
 const props = defineProps<{ current: SceneSummary | null; fallbackChapterId: string | null; insertIntoScene: (text: string) => boolean }>();
 const emit = defineEmits<{ close: []; sceneCreated: [id: string]; changed: []; discuss: [text: string] }>();
@@ -134,6 +135,7 @@ onBeforeUnmount(() => {
     <ConnectPhone v-if="status && !status.connected" @connected="fetchNow" />
 
     <template v-else-if="status">
+      <PhoneQr v-if="status.url && status.nickname" :url="status.url" :nickname="status.nickname" />
       <div class="tabs" role="tablist">
         <button role="tab" :aria-selected="tab === 'nova'" @click="tab = 'nova'">Novas <span>{{ counts.nova }}</span></button>
         <button role="tab" :aria-selected="tab === 'arquivada'" @click="tab = 'arquivada'">Arquivadas <span>{{ counts.arquivada }}</span></button>

@@ -99,7 +99,7 @@ fn password_envelope(password: &str, master: &MasterKey) -> Result<(Vec<u8>, Wra
 pub fn create(nickname: &str, password: &str) -> Result<(VaultFile, MasterKey, String), VaultError> {
     let master = MasterKey(random());
     let mut entropy: [u8; 32] = random();
-    let mnemonic = bip39::Mnemonic::from_entropy(&entropy).map_err(|_| VaultError::Crypto)?;
+    let mnemonic = bip39::Mnemonic::from_entropy_in(bip39::Language::Portuguese, &entropy).map_err(|_| VaultError::Crypto)?;
     let rec_salt: [u8; 16] = random();
     let mut rec_kek = kdf(&entropy, &rec_salt)?;
     entropy.zeroize();
@@ -125,7 +125,10 @@ pub fn unlock(v: &VaultFile, password: &str) -> Result<MasterKey, VaultError> {
 }
 
 pub fn recover(v: &VaultFile, phrase: &str, new_password: &str) -> Result<(VaultFile, MasterKey), VaultError> {
-    let mnemonic = bip39::Mnemonic::parse_in(bip39::Language::English, normalize_phrase(phrase))
+    // palavras em português (atual) ou em inglês (cofres criados antes)
+    let phrase = normalize_phrase(phrase);
+    let mnemonic = bip39::Mnemonic::parse_in(bip39::Language::Portuguese, &phrase)
+        .or_else(|_| bip39::Mnemonic::parse_in(bip39::Language::English, &phrase))
         .map_err(|_| VaultError::InvalidPhrase)?;
     let mut entropy = mnemonic.to_entropy();
     let mut kek = kdf(&entropy, &v.rec_salt)?;
@@ -230,6 +233,23 @@ mod tests {
         let (v, _, _) = create("ana", "x").unwrap();
         let (_, _, other) = create("bia", "x").unwrap();
         assert!(matches!(recover(&v, &other, "y"), Err(VaultError::InvalidPhrase)));
+    }
+
+    #[test]
+    fn new_phrase_is_in_portuguese() {
+        let (_, _, p) = create("ana", "x").unwrap();
+        for w in p.split(' ') {
+            assert!(bip39::Language::Portuguese.find_word(w).is_some(), "{w} não é da lista em português");
+        }
+    }
+
+    #[test]
+    fn old_english_phrase_still_recovers() {
+        // cofres criados antes guardam palavras em inglês: a mesma entropia, outra lista
+        let (v, k, p) = create("ana", "x").unwrap();
+        let entropy = bip39::Mnemonic::parse_in(bip39::Language::Portuguese, &p).unwrap().to_entropy();
+        let english = bip39::Mnemonic::from_entropy_in(bip39::Language::English, &entropy).unwrap().to_string();
+        assert_eq!(recover(&v, &english, "y").unwrap().1 .0, k.0);
     }
 
     #[test]

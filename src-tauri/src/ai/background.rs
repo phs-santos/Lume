@@ -63,6 +63,10 @@ pub fn digest_scene(db: &SharedDb, model: &dyn ChatModel, scene_id: &str, now: &
         with(db, |c| ai::digest_put(c, scene_id, &hash, EMPTY_SUMMARY, now()))?;
         return Ok(true);
     }
+    // limite do mês atingido: o resumo espera (a cena continua pendente)
+    if let Some(m) = with(db, |c| crate::ai::chat::limit_reached(c, now()))? {
+        return Err(m);
+    }
     let prompt = format!(
         "Você mantém a Bíblia de um livro. Leia a cena e responda SÓ com JSON, sem comentários:\n\
 {{\"resumo\": \"2 a 3 frases sobre o que acontece\", \"fichas\": [{{\"tipo\": \"personagem|lugar|fato|linha_do_tempo\", \"nome\": \"...\", \"apelidos\": [\"...\"], \"fato\": \"descrição curta e estável\", \"ordem\": 0}}]}}\n\
@@ -127,6 +131,18 @@ mod tests {
     use std::sync::atomic::AtomicBool;
 
     fn now() -> i64 { 1_794_900_000_000 }
+
+    #[test]
+    fn monthly_limit_pauses_digest() {
+        let (_d, c) = test_conn();
+        let b = testkit::sample(&c, "conselheira");
+        crate::db::settings::setting_set(&c, "ai.monthly_limit", "1").unwrap();
+        ai::usage_add(&c, &crate::ai::chat::month_of(now()), "x", 0, 0, Some(2.0)).unwrap();
+        let db = shared(c);
+        let m = FakeModel::new(vec![text_turn("{}")]);
+        assert!(digest_scene(&db, &m, &b.scenes[0], &now).is_err());
+        assert!(m.calls.lock().unwrap().is_empty());
+    }
     const GOOD: &str = r#"```json
 {"resumo":"Rafa programa de madrugada.","fichas":[{"tipo":"personagem","nome":"Rafa","apelidos":["Rafael"],"fato":"Programador insone"}]}
 ```"#;

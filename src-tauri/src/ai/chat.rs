@@ -2,7 +2,7 @@
 
 use crate::ai::context::{self, needs_fold, WINDOW};
 use crate::ai::provider::{ChatModel, Msg, Usage};
-use crate::ai::tools;
+use crate::ai::{pricing, tools};
 use crate::db::ai::{self, Proposal};
 use crate::db::settings::setting_get;
 use crate::db::{books, DbError};
@@ -20,7 +20,8 @@ pub enum ChatEvent {
     Delta { text: String },
     Note { text: String },
     Proposal { proposal: Proposal },
-    Done { message_id: String },
+    /// fim da resposta, com o gasto dela (custo estimado; None se o modelo não está na tabela)
+    Done { message_id: String, input_tokens: i64, output_tokens: i64, cost: Option<f64> },
     Error { message: String },
 }
 
@@ -60,8 +61,23 @@ fn with<T>(db: &SharedDb, f: impl FnOnce(&Connection) -> Result<T, DbError>) -> 
     f(c).map_err(|e| e.to_string())
 }
 
-pub fn record_usage(db: &SharedDb, model: &str, u: &Usage, now: i64) {
-    let _ = with(db, |c| ai::usage_add(c, &month_of(now), model, u.input_tokens, u.output_tokens, u.cost));
+/// Grava o gasto; sem custo do provedor, usa a estimativa da tabela. Devolve o custo gravado.
+pub fn record_usage(db: &SharedDb, model: &str, u: &Usage, now: i64) -> Option<f64> {
+    let cost = u.cost.or_else(|| pricing::estimate(model, u.input_tokens, u.output_tokens));
+    let _ = with(db, |c| ai::usage_add(c, &month_of(now), model, u.input_tokens, u.output_tokens, cost));
+    cost
+}
+
+/// Limite mensal em US$ (ajuste "ai.monthly_limit"); None = sem limite.
+pub fn monthly_limit(c: &Connection) -> Result<Option<f64>, DbError> {
+    Ok(setting_get(c, "ai.monthly_limit")?.and_then(|v| v.replace(',', ".").trim().parse::<f64>().ok()).filter(|v| *v > 0.0))
+}
+
+/// Mensagem de erro se o gasto do mês já chegou ao limite.
+pub fn limit_reached(c: &Connection, now: i64) -> Result<Option<String>, DbError> {
+    let Some(limit) = monthly_limit(c)? else { return Ok(None) };
+    let spent = ai::usage_cost_month(c, &month_of(now))?;
+    Ok((spent >= limit).then(|| format!("O gasto deste mês chegou ao limite de US$ {limit:.2}. Aumente ou tire o limite em Ajustes.")))
 }
 
 /// Grava a pergunta e responde. A pergunta fica salva mesmo se a IA falhar.
@@ -96,8 +112,13 @@ pub fn retry(db: &SharedDb, model: &dyn ChatModel, book_id: &str, scene_id: Opti
 }
 
 fn answer(db: &SharedDb, model: &dyn ChatModel, book_id: &str, scene_id: Option<&str>, conv_id: &str, emit: &mut dyn FnMut(ChatEvent), now: &dyn Fn() -> i64) -> Result<(), String> {
+    if let Some(message) = with(db, |c| limit_reached(c, now()))? {
+        emit(ChatEvent::Error { message: message.clone() });
+        return Err(message);
+    }
     let (cfg, mode) = with(db, |c| Ok((AiConfig::load(c)?, books::book_outline(c, book_id)?.book.ai_mode)))?;
     let mut extra: Vec<Msg> = vec![];
+    let (mut tin, mut tout, mut cost) = (0i64, 0i64, Some(0f64));
     let mut used = 0usize;
     let mut full_text = String::new();
     loop {
@@ -113,12 +134,15 @@ fn answer(db: &SharedDb, model: &dyn ChatModel, book_id: &str, scene_id: Option<
                 return Err(message);
             }
         };
-        record_usage(db, &cfg.chat_model, &turn.usage, now());
+        let c = record_usage(db, &cfg.chat_model, &turn.usage, now());
+        tin += turn.usage.input_tokens;
+        tout += turn.usage.output_tokens;
+        cost = cost.zip(c).map(|(a, b)| a + b);
         full_text.push_str(&turn.text);
         if turn.tool_calls.is_empty() || offered.is_empty() {
             let text = if full_text.trim().is_empty() { "(sem resposta)".to_string() } else { full_text.trim().to_string() };
             let m = with(db, |c| ai::message_add(c, conv_id, "assistant", &text, None, now()))?;
-            emit(ChatEvent::Done { message_id: m.id });
+            emit(ChatEvent::Done { message_id: m.id, input_tokens: tin, output_tokens: tout, cost });
             return Ok(());
         }
         extra.push(Msg::assistant_tools(&turn.text, turn.tool_calls.clone()));
@@ -243,6 +267,38 @@ mod tests {
         let mut ev = vec![];
         assert!(send(&db, &m, &b.id, None, "oi", &mut |e| ev.push(e), &now).is_err());
         assert!(matches!(ev.last(), Some(ChatEvent::Error { message }) if message.contains("crédito")));
+        assert_eq!(msgs(&db, &b.id), vec![("user".into(), "oi".into())]);
+    }
+
+    #[test]
+    fn done_reports_tokens_and_estimated_cost() {
+        let (_d, db, b) = setup("conselheira");
+        let m = FakeModel::new(vec![tool_turn("ler_cena", serde_json::json!({"id": b.scenes[1]})), text_turn("ok")]);
+        let mut ev = vec![];
+        send(&db, &m, &b.id, None, "oi", &mut |e| ev.push(e), &now).unwrap();
+        match ev.last() {
+            Some(ChatEvent::Done { input_tokens, output_tokens, cost, .. }) => {
+                assert_eq!((*input_tokens, *output_tokens), (20, 4));
+                assert!(cost.unwrap() > 0.0); // modelo padrão está na tabela de preços
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn monthly_limit_blocks_new_answers() {
+        let (_d, db, b) = setup("conselheira");
+        {
+            let g = db.lock().unwrap();
+            let c = g.as_ref().unwrap();
+            crate::db::settings::setting_set(c, "ai.monthly_limit", "1,50").unwrap();
+            ai::usage_add(c, &month_of(now()), "x", 0, 0, Some(1.6)).unwrap();
+        }
+        let m = FakeModel::new(vec![text_turn("não devia")]);
+        let mut ev = vec![];
+        assert!(send(&db, &m, &b.id, None, "oi", &mut |e| ev.push(e), &now).is_err());
+        assert!(matches!(ev.last(), Some(ChatEvent::Error { message }) if message.contains("limite")));
+        assert!(m.calls.lock().unwrap().is_empty());
         assert_eq!(msgs(&db, &b.id), vec![("user".into(), "oi".into())]);
     }
 

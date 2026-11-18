@@ -21,6 +21,8 @@ import ShortcutsHelp from "./ShortcutsHelp.vue";
 import { onClickOutside } from "../../lib/clickOutside";
 import { imageAdd, imagesGc } from "../../lib/api";
 import { prepareImage, toBase64 } from "./imageFile";
+import BookSheet from "../book/BookSheet.vue";
+import { coverColor } from "../../lib/coverColor";
 import InboxPanel from "../inbox/InboxPanel.vue";
 import { isMac, label, matchShortcut, SHORTCUTS, type Action } from "./shortcuts";
 import { useAutosave } from "./useAutosave";
@@ -77,6 +79,7 @@ async function setMode(m: AiMode) {
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 const touchScene = (id: string) => void aiSceneTouched(id).catch(() => {});
 const panel = ref<"none" | "settings" | "versions" | "export" | "help" | "ideas">("none");
+const bookSheet = ref(false); // ficha do livro (capa, autor, sinopse…)
 const newIdeas = ref(0);
 const mac = isMac();
 const totalWords = computed(() =>
@@ -500,6 +503,7 @@ onBeforeUnmount(() => {
       <p v-else-if="outline" class="empty">Crie uma cena no sumário para começar.</p>
 
       <SettingsPanel v-if="panel === 'settings'" :mode="outline?.book.ai_mode ?? null" @set-mode="setMode" @close="panel = 'none'" />
+      <BookSheet v-if="bookSheet && outline" :book-id="bookId" :title="outline.book.title" :color="coverColor(bookId)" @close="bookSheet = false" />
       <ShortcutsHelp v-if="panel === 'help'" @close="panel = 'none'" />
       <InboxPanel
         v-if="panel === 'ideas'"
@@ -519,6 +523,7 @@ onBeforeUnmount(() => {
         </div>
         <label class="check-row"><input v-model="exportTitles" type="checkbox" /> Incluir o título de cada cena</label>
         <p class="hint">Na ordem do sumário. Entre as cenas sai um separador (* * *).</p>
+        <button class="link sheet-link" @click="(bookSheet = true), (panel = 'none')">Ficha do livro: capa, autor, sinopse e dedicatória</button>
         <div class="actions">
           <button class="btn" @click="exportBook('docx')">Word</button>
           <button class="btn quiet" @click="exportBook('pdf')">PDF</button>
@@ -646,6 +651,7 @@ onBeforeUnmount(() => {
 .versions ol { list-style: none; padding: 0; margin: 0 0 0.75rem; }
 .versions li { display: grid; grid-template-columns: 1fr auto; gap: 0.1rem 1rem; padding: 0.5rem 0; border-bottom: 1px solid var(--rule); }
 .versions li .link { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+.sheet-link { margin: 0.25rem 0 0.5rem -0.5rem; font-size: 0.85rem; }
 .export-msg { margin-top: 0.75rem; word-break: break-all; }
 .export-scope { display: flex; margin-bottom: 0.6rem; padding: 2px; border: 1px solid var(--rule); border-radius: 8px; }
 .export-scope button { flex: 1; border: 0; border-radius: 6px; background: none; padding: 0.3rem 0.5rem; color: var(--note); font-size: 0.82rem; cursor: pointer; }

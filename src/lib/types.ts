@@ -63,3 +63,8 @@ export type ChatEvent =
   | { type: "done"; message_id: string; input_tokens: number; output_tokens: number; cost: number | null }
   | { type: "error"; message: string };
 export interface Progress { done: number; total: number }
+
+export interface BookMeta {
+  author: string | null; synopsis: string | null; dedication: string | null;
+  cover_image_id: string | null; back_image_id: string | null;
+}

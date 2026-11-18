@@ -199,6 +199,22 @@ Object.assign(handlers, {
   proposals_pending: () => [],
 });
 
+// imagens e ficha do livro (simuladas)
+const images: Record<string, { mime: string; bytes: Uint8Array }> = {};
+const metas: Record<string, any> = {};
+Object.assign(handlers, {
+  image_add: ({ mime, b64 }: any) => {
+    const id = crypto.randomUUID();
+    images[id] = { mime, bytes: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)) };
+    return id;
+  },
+  image_get: ({ id }: any) => images[id]?.bytes.slice().buffer ?? new ArrayBuffer(0),
+  image_mime: ({ id }: any) => images[id]?.mime ?? "image/png",
+  images_gc: () => 0,
+  book_meta_get: ({ bookId }: any) => metas[bookId] ?? { author: null, synopsis: null, dedication: null, cover_image_id: null, back_image_id: null },
+  book_meta_set: ({ bookId, meta }: any) => void (metas[bookId] = meta),
+});
+
 export function installMockBackend() {
   mockWindows("main");
   if (location.search.includes("demo")) {

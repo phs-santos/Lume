@@ -6,6 +6,7 @@ use std::path::Path;
 
 pub mod ai;
 pub mod books;
+pub mod images;
 pub mod inbox;
 pub mod scenes;
 pub mod settings;
@@ -177,6 +178,22 @@ ALTER TABLE inbox ADD COLUMN transcript TEXT;
 ALTER TABLE inbox ADD COLUMN transcript_status TEXT CHECK(transcript_status IN('pendente','pronta','erro','sem_chave'));
 ALTER TABLE inbox ADD COLUMN transcript_error TEXT;
 UPDATE inbox SET transcript_status='pendente' WHERE kind='audio';
+"#, r#"
+CREATE TABLE images(
+  id TEXT PRIMARY KEY,
+  book_id TEXT NOT NULL REFERENCES books(id),
+  mime TEXT NOT NULL,
+  bytes BLOB NOT NULL,
+  width INTEGER,
+  height INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX images_book ON images(book_id);
+ALTER TABLE books ADD COLUMN author TEXT;
+ALTER TABLE books ADD COLUMN synopsis TEXT;
+ALTER TABLE books ADD COLUMN dedication TEXT;
+ALTER TABLE books ADD COLUMN cover_image_id TEXT;
+ALTER TABLE books ADD COLUMN back_image_id TEXT;
 "#];
 
 pub fn open(path: &Path, key: &MasterKey) -> Result<Connection, DbError> {

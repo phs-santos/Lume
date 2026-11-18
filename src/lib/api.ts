@@ -1,6 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { AiModels, BibleEntry, ChatEvent, Conversation, ConversationView, Progress, Proposal, UsageRow } from "./types";
-import type { AiMode, Book, InboxItem, RemoteStatus, Chapter, Outline, Scene, Version, VaultStatus } from "./types";
+import type { AiMode, Book, BookMeta, InboxItem, RemoteStatus, Chapter, Outline, Scene, Version, VaultStatus } from "./types";
 
 export interface Profile { id: string; nickname: string; active: boolean }
 export const profilesList = () => invoke<Profile[]>("profiles_list");
@@ -93,3 +93,11 @@ export const bibleAbsorbNote = (id: string, index: number) => invoke<BibleEntry>
 export const bibleDelete = (id: string) => invoke<void>("bible_delete", { id });
 export const proposalSetStatus = (id: string, status: Proposal["status"]) => invoke<void>("proposal_set_status", { id, status });
 export const proposalsPending = (bookId: string) => invoke<Proposal[]>("proposals_pending", { bookId });
+
+export const imageAdd = (bookId: string, mime: string, b64: string, width: number, height: number) =>
+  invoke<string>("image_add", { bookId, mime, b64, width, height });
+export const imageGet = (id: string) => invoke<ArrayBuffer>("image_get", { id });
+export const imageMime = (id: string) => invoke<string>("image_mime", { id });
+export const imagesGc = (bookId: string) => invoke<number>("images_gc", { bookId });
+export const bookMetaGet = (bookId: string) => invoke<BookMeta>("book_meta_get", { bookId });
+export const bookMetaSet = (bookId: string, meta: BookMeta) => invoke<void>("book_meta_set", { bookId, meta });

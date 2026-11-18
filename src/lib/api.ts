@@ -63,6 +63,8 @@ export const aiConversation = (bookId: string) => invoke<ConversationView>("ai_c
 export const aiConversationNew = (bookId: string) => invoke<ConversationView>("ai_conversation_new", { bookId });
 export const aiConversations = (bookId: string) => invoke<Conversation[]>("ai_conversations", { bookId });
 export const aiConversationOpen = (id: string) => invoke<ConversationView>("ai_conversation_open", { id });
+export const aiConversationRename = (id: string, title: string) => invoke<void>("ai_conversation_rename", { id, title });
+export const aiConversationDelete = (id: string) => invoke<void>("ai_conversation_delete", { id });
 
 function channel<T>(on: (e: T) => void) {
   const ch = new Channel<T>();

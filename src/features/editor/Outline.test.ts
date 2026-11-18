@@ -5,7 +5,7 @@ import type { Outline as OutlineT } from "../../lib/types";
 
 vi.mock("../../lib/api", () => ({
   chapterCreate: vi.fn(), chapterDelete: vi.fn(), chapterRename: vi.fn(async () => {}),
-  sceneCreate: vi.fn(), sceneMove: vi.fn(), sceneRename: vi.fn(async () => {}),
+  sceneCreate: vi.fn(async () => ({ id: "novo" })), sceneDelete: vi.fn(async () => {}), sceneMove: vi.fn(), sceneRename: vi.fn(async () => {}),
 }));
 import * as api from "../../lib/api";
 import Outline from "./Outline.vue";
@@ -39,7 +39,38 @@ describe("Outline", () => {
     expect(li.textContent).toContain("Linha 340");
     expect(li.classList.contains("current")).toBe(true);
     expect(single.querySelector('[aria-label="Nova cena no fim do capítulo"]')).not.toBeNull();
-    expect(single.querySelector('[aria-label="Apagar capítulo"]')).not.toBeNull();
+    expect(single.querySelector('[aria-label="Mais ações do capítulo"]')).not.toBeNull();
+  });
+
+  const items = (el: HTMLElement) => [...el.querySelectorAll(".menu-item")].map((b) => b.textContent!.trim());
+
+  it("o ⋯ da linha única diz que é capítulo e cria cena depois dela", async () => {
+    const el = mount();
+    (el.querySelector('section.chapter [aria-label="Mais ações do capítulo"]') as HTMLElement).click();
+    await nextTick();
+    expect(el.querySelector(".menu-kind")!.textContent).toContain("Capítulo");
+    expect(items(el)).toContain("Nova cena depois desta");
+    ([...el.querySelectorAll(".menu-item")].find((b) => b.textContent!.includes("depois")) as HTMLElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(api.sceneCreate).toHaveBeenCalledWith("c1", "Cena 2", 1);
+    expect(el.querySelector(".menu")).toBeNull();
+  });
+
+  it("clique direito numa cena abre o menu dela; apagar pede confirmação", async () => {
+    const el = mount();
+    const row = el.querySelectorAll("section.chapter")[1].querySelectorAll(".row")[1] as HTMLElement;
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    await nextTick();
+    expect(el.querySelector(".menu-kind")!.textContent).toBe("Cena");
+    expect(items(el)).toEqual(["Nova cena depois desta", "Nova cena antes desta", "Renomear cena", "Apagar cena"]);
+    const del = () => [...el.querySelectorAll(".menu-item")].find((b) => b.textContent!.includes("pagar cena")) as HTMLElement;
+    del().click();
+    await nextTick();
+    expect(api.sceneDelete).not.toHaveBeenCalled();
+    expect(del().textContent).toContain("Confirmar");
+    del().click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(api.sceneDelete).toHaveBeenCalledWith("s3");
   });
 
   it("capítulo vazio tem botão de nova cena", () => {

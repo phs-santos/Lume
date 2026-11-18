@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { IconAdjustmentsHorizontal, IconArrowLeft, IconDownload, IconBulb, IconHistory, IconKeyboard, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconSparkles } from "@tabler/icons-vue";
+import { IconAdjustmentsHorizontal, IconArrowLeft, IconDownload, IconBulb, IconHistory, IconHelpCircle, IconLayoutSidebarLeftCollapse, IconLayoutSidebarLeftExpand, IconSparkles } from "@tabler/icons-vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
@@ -7,11 +7,11 @@ import { toDocx } from "../../lib/export/docx";
 import { toMarkdown } from "../../lib/export/markdown";
 import type { ExportBook } from "../../lib/export/types";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
-import { aiSceneTouched, proposalSetStatus, bookOutline, chapterCreate, inboxList, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRestore, sceneSave, sceneVersions, settingGet, settingSet } from "../../lib/api";
+import { aiSceneTouched, bookSetMode, proposalSetStatus, bookOutline, chapterCreate, inboxList, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRestore, sceneSave, sceneVersions, settingGet, settingSet } from "../../lib/api";
 import AssistantPanel from "../assistant/AssistantPanel.vue";
 import { errorMessage } from "../../lib/errors";
 import { countWords } from "../../lib/wordcount";
-import type { Outline as OutlineT, Proposal, Scene, Version } from "../../lib/types";
+import type { AiMode, Outline as OutlineT, Proposal, Scene, Version } from "../../lib/types";
 import Outline from "./Outline.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import Typewriter from "./Typewriter.vue";
@@ -30,12 +30,35 @@ const scene = ref<Scene | null>(null);
 const sidebar = ref(true);
 const assistant = ref(false);
 
-async function toggleAssistant() {
-  assistant.value = !assistant.value;
+async function setAssistant(open: boolean) {
+  assistant.value = open;
   try {
-    await settingSet("assistant_open", assistant.value ? "1" : "0");
+    await settingSet("assistant_open", open ? "1" : "0");
   } catch {
     /* preferência: não é grave se não salvar */
+  }
+}
+const toggleAssistant = () => setAssistant(!assistant.value);
+
+const assistantPanel = ref<{ focusInput: () => void; $el: HTMLElement } | null>(null);
+
+/** ⌘J: abre o assistente e põe o cursor na mensagem; só fecha se o cursor já estiver nele. */
+async function assistantShortcut() {
+  const el = assistantPanel.value?.$el as HTMLElement | undefined;
+  if (assistant.value && el?.contains(document.activeElement)) return setAssistant(false);
+  if (!assistant.value) await setAssistant(true);
+  await nextTick();
+  assistantPanel.value?.focusInput();
+}
+
+/** Troca o modo da IA deste livro (Conselheira ou Coautora). */
+async function setMode(m: AiMode) {
+  if (!outline.value || outline.value.book.ai_mode === m) return;
+  try {
+    await bookSetMode(props.bookId, m);
+    outline.value.book.ai_mode = m;
+  } catch (e) {
+    error.value = errorMessage(e);
   }
 }
 
@@ -205,10 +228,10 @@ const currentChapterTitle = computed(
   () => outline.value?.chapters.find((c) => c.chapter.id === scene.value?.chapter_id)?.chapter.title ?? "",
 );
 
-const typewriter = ref<{ insertAtEnd: (t: string) => boolean } | null>(null);
+const typewriter = ref<{ insertAtEnd: (t: string) => boolean; insertAtCursor: (t: string) => boolean } | null>(null);
 
 /** Proposta aprovada: entra pelo editor aberto (um ⌘Z desfaz), e o autosave grava. */
-async function insertProposal(p: Proposal) {
+async function insertProposal(p: Proposal, where: "end" | "cursor" = "end") {
   try {
     if (p.scene_id && scene.value?.id !== p.scene_id) {
       await openScene(p.scene_id);
@@ -217,7 +240,9 @@ async function insertProposal(p: Proposal) {
     }
     // se a troca de cena não aconteceu (ex.: falha ao salvar), não insere na cena errada
     if (p.scene_id && scene.value?.id !== p.scene_id) throw new Error("Não consegui abrir a cena da proposta.");
-    if (!typewriter.value?.insertAtEnd(p.text)) throw new Error("Abra uma cena para inserir o trecho.");
+    const tw = typewriter.value;
+    const ok = where === "cursor" ? tw?.insertAtCursor(p.text) : tw?.insertAtEnd(p.text);
+    if (!ok) throw new Error("Abra uma cena para inserir o trecho.");
     await proposalSetStatus(p.id, "inserida");
   } catch (e) {
     error.value = errorMessage(e);
@@ -274,7 +299,7 @@ async function run(action: Action) {
       case "settings": togglePanel("settings"); break;
       case "help": togglePanel("help"); break;
       case "ideas": togglePanel("ideas"); break;
-      case "assistant": await toggleAssistant(); break;
+      case "assistant": await assistantShortcut(); break;
       case "close": panel.value = "none"; break;
     }
   } catch (e) {
@@ -345,14 +370,14 @@ onBeforeUnmount(() => {
           <span class="dot" />{{ saveState === "erro" ? "Não salvo" : saveState === "salvando" ? "Salvando…" : "Salvo" }}
         </span>
         <nav class="tools" aria-label="Ferramentas">
-          <button :class="['link', 'icon', { on: panel === 'ideas' }]" :title="`Ideias (${hint('ideas')})`" aria-label="Ideias" @click="togglePanel('ideas')">
-            <IconBulb :size="18" stroke-width="1.75" /><span v-if="newIdeas" class="badge">{{ newIdeas }}</span>
+          <button :class="['link', 'icon', { on: panel === 'ideas' }]" :title="`Ideias que chegaram do celular (${hint('ideas')})`" aria-label="Ideias" @click="togglePanel('ideas')">
+            <IconBulb :size="18" stroke-width="1.75" /><span class="lbl">Ideias</span><span v-if="newIdeas" class="badge">{{ newIdeas }}</span>
           </button>
-          <button :class="['link', 'icon', { on: panel === 'versions' }]" :title="`Versões (${hint('versions')})`" aria-label="Versões" @click="showVersions"><IconHistory :size="18" stroke-width="1.75" /></button>
-          <button :class="['link', 'icon', { on: panel === 'export' }]" :title="`Exportar (${hint('export')})`" aria-label="Exportar" @click="panel = panel === 'export' ? 'none' : 'export'"><IconDownload :size="18" stroke-width="1.75" /></button>
-          <button :class="['link', 'icon', { on: panel === 'settings' }]" :title="`Ajustes (${hint('settings')})`" aria-label="Ajustes" @click="panel = panel === 'settings' ? 'none' : 'settings'"><IconAdjustmentsHorizontal :size="18" stroke-width="1.75" /></button>
-          <button :class="['link', 'icon', { on: assistant }]" :title="`Assistente de IA (${hint('assistant')})`" aria-label="Assistente de IA" @click="toggleAssistant"><IconSparkles :size="18" stroke-width="1.75" /></button>
-          <button class="link icon" :title="`Atalhos (${hint('help')})`" aria-label="Atalhos de teclado" @click="panel = 'help'"><IconKeyboard :size="18" stroke-width="1.75" /></button>
+          <button :class="['link', 'icon', { on: panel === 'versions' }]" :title="`Versões salvas desta cena (${hint('versions')})`" aria-label="Versões" @click="showVersions"><IconHistory :size="18" stroke-width="1.75" /><span class="lbl">Versões</span></button>
+          <button :class="['link', 'icon', { on: panel === 'export' }]" :title="`Exportar (${hint('export')})`" aria-label="Exportar" @click="panel = panel === 'export' ? 'none' : 'export'"><IconDownload :size="18" stroke-width="1.75" /><span class="lbl">Exportar</span></button>
+          <button :class="['link', 'icon', { on: panel === 'settings' }]" :title="`Ajustes (${hint('settings')})`" aria-label="Ajustes" @click="panel = panel === 'settings' ? 'none' : 'settings'"><IconAdjustmentsHorizontal :size="18" stroke-width="1.75" /><span class="lbl">Ajustes</span></button>
+          <button :class="['link', 'icon', { on: panel === 'help' }]" :title="`Ajuda e atalhos (${hint('help')})`" aria-label="Ajuda" @click="panel = panel === 'help' ? 'none' : 'help'"><IconHelpCircle :size="18" stroke-width="1.75" /><span class="lbl">Ajuda</span></button>
+          <button :class="['link', 'icon', 'ai', { on: assistant }]" :title="`Assistente de IA (${hint('assistant')})`" aria-label="Assistente de IA" @click="toggleAssistant"><IconSparkles :size="18" stroke-width="1.75" /><span class="lbl">Assistente</span></button>
         </nav>
         </div>
       </header>
@@ -383,7 +408,7 @@ onBeforeUnmount(() => {
       />
       <p v-else-if="outline" class="empty">Crie uma cena no sumário para começar.</p>
 
-      <SettingsPanel v-if="panel === 'settings'" @close="panel = 'none'" />
+      <SettingsPanel v-if="panel === 'settings'" :mode="outline?.book.ai_mode ?? null" @set-mode="setMode" @close="panel = 'none'" />
       <ShortcutsHelp v-if="panel === 'help'" @close="panel = 'none'" />
       <InboxPanel
         v-if="panel === 'ideas'"
@@ -418,11 +443,13 @@ onBeforeUnmount(() => {
 
     <AssistantPanel
       v-if="assistant && outline"
+      ref="assistantPanel"
       :book-id="bookId"
       :scene-id="scene?.id ?? null"
       :mode="outline.book.ai_mode"
       :scene-titles="sceneTitles"
       @close="toggleAssistant"
+      @set-mode="setMode"
       @open-scene="openScene"
       @insert-proposal="insertProposal"
       @proposal-as-scene="proposalAsScene"
@@ -475,6 +502,11 @@ onBeforeUnmount(() => {
 .bar .link:hover, .bar .link.on { background: rgba(255, 255, 255, 0.08); color: #fff; }
 .bar .icon { padding: 0 0.5rem; }
 .tools { display: flex; gap: 0.15rem; }
+.bar-main { container-type: inline-size; }
+.bar .icon { display: inline-flex; align-items: center; gap: 0.35rem; }
+.lbl { font-size: 0.8rem; }
+/* pouco espaço: só os ícones (o nome continua na dica) */
+@container (max-width: 44rem) { .lbl { display: none; } }
 .spacer { flex: 1; }
 .badge {
   min-width: 1.15rem;

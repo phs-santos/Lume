@@ -51,21 +51,34 @@ onBeforeUnmount(() => editor.value?.destroy());
  * Proposta aprovada da Coautora: parágrafos no fim da cena, numa única alteração
  * (um ⌘Z desfaz tudo). O autosave normal grava; nada é escrito direto no banco.
  */
-function insertAtEnd(text: string): boolean {
-  const ed = editor.value;
-  if (!ed) return false;
-  const paragraphs = text
+function toParagraphs(text: string) {
+  return text
     .split(/\n\s*\n/)
     .map((t) => t.replace(/\s*\n\s*/g, " ").trim())
     .filter(Boolean)
     .map((t) => ({ type: "paragraph", content: [{ type: "text", text: t }] }));
-  if (!paragraphs.length) return false;
+}
+
+function insertAtEnd(text: string): boolean {
+  const ed = editor.value;
+  const paragraphs = toParagraphs(text);
+  if (!ed || !paragraphs.length) return false;
   if (ed.isEmpty) ed.chain().setContent({ type: "doc", content: paragraphs }, true).focus("end").run();
   else ed.chain().insertContentAt(ed.state.doc.content.size, paragraphs).focus("end").run();
   return true;
 }
 
-defineExpose({ insertAtEnd });
+/** Proposta no ponto do cursor (um ⌘Z desfaz). */
+function insertAtCursor(text: string): boolean {
+  const ed = editor.value;
+  const paragraphs = toParagraphs(text);
+  if (!ed || !paragraphs.length) return false;
+  if (ed.isEmpty) return insertAtEnd(text);
+  ed.chain().focus().insertContent(paragraphs).run();
+  return true;
+}
+
+defineExpose({ insertAtEnd, insertAtCursor });
 
 /** A roda do mouse sobre a mesa (fora da folha) também rola a folha. */
 function forwardWheel(e: WheelEvent) {

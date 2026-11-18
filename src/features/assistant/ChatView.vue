@@ -1,17 +1,29 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref } from "vue";
-import { IconArrowUp, IconHistory, IconPlus, IconRefresh, IconSearch } from "@tabler/icons-vue";
+import { IconArrowUp, IconMessages, IconPencil, IconPlus, IconRefresh, IconSearch, IconTrash } from "@tabler/icons-vue";
 import {
-  aiConversation, aiConversationNew, aiConversationOpen, aiConversations, aiKeySet, aiKeyStatus, aiRetry, aiSend, proposalsPending,
+  aiConversation, aiConversationDelete, aiConversationNew, aiConversationOpen, aiConversationRename, aiConversations, aiKeySet, aiKeyStatus, aiRetry, aiSend, proposalsPending,
 } from "../../lib/api";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { errorMessage } from "../../lib/errors";
 import type { ChatEvent, Conversation, Proposal } from "../../lib/types";
 
-const props = defineProps<{ bookId: string; sceneId: string | null; mode: string }>();
-const emit = defineEmits<{ insertProposal: [p: Proposal]; proposalAsScene: [p: Proposal]; discardProposal: [p: Proposal] }>();
+const props = defineProps<{ bookId: string; sceneId: string | null; mode: string; sceneTitles?: Record<string, string> }>();
+const emit = defineEmits<{
+  insertProposal: [p: Proposal, where: "end" | "cursor"];
+  proposalAsScene: [p: Proposal];
+  discardProposal: [p: Proposal];
+}>();
+
+/** Perguntas prontas para quem não sabe por onde começar. */
+const SUGGESTIONS: Record<string, string[]> = {
+  conselheira: ["O que você achou desta cena?", "Tem alguma contradição no livro até aqui?", "Resuma o livro até agora", "Quem são os personagens e o que cada um quer?"],
+  coautora: ["Sugira como continuar esta cena", "Escreva um parágrafo de transição para a próxima cena", "O que você achou desta cena?", "Tem alguma contradição no livro até aqui?"],
+};
 
 type Item =
-  | { kind: "user" | "assistant"; id: string; text: string }
+  | { kind: "user"; id: string; text: string }
+  | { kind: "assistant"; id: string; text: string; meta?: string }
   | { kind: "note"; id: string; text: string }
   | { kind: "proposal"; id: string; proposal: Proposal };
 
@@ -24,11 +36,24 @@ const error = ref("");
 const showHistory = ref(false);
 const history = ref<Conversation[]>([]);
 const scroller = ref<HTMLElement | null>(null);
+const input = ref<HTMLTextAreaElement | null>(null);
+const renaming = ref<string | null>(null);
+const renameDraft = ref("");
+const confirmDel = ref<string | null>(null);
+
+/** "5,2 mil tokens · ~US$ 0,01" */
+function costLine(i: number, o: number, cost: number | null) {
+  const n = i + o;
+  const tokens = n < 1000 ? `${n} tokens` : `${(n / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mil tokens`;
+  if (cost == null) return tokens;
+  const usd = cost < 0.01 ? "menos de US$ 0,01" : `~US$ ${cost.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${tokens} · ${usd}`;
+}
 let seq = 0;
 const tmpId = () => `tmp-${++seq}`;
 
 function load(view: { messages: { id: string; role: string; content: string }[] }) {
-  items.value = view.messages.map((m) => ({ kind: m.role as "user" | "assistant" | "note", id: m.id, text: m.content }));
+  items.value = view.messages.map((m) => ({ kind: m.role, id: m.id, text: m.content }) as Item);
   error.value = "";
   void scrollDown();
 }
@@ -83,6 +108,9 @@ function handler() {
       // as bolhas desta resposta já estão salvas: não são mais "provisórias"
       const created = new Set(mine);
       items.value = items.value.map((i) => (created.has(i.id) ? { ...i, id: `${e.message_id}-${i.id}` } : i));
+      // o gasto desta resposta aparece embaixo da última bolha dela
+      const last = [...items.value].reverse().find((i) => i.kind === "assistant" && i.id.startsWith(`${e.message_id}-`));
+      if (last && last.kind === "assistant") last.meta = costLine(e.input_tokens, e.output_tokens, e.cost);
       mine.length = 0;
     } else if (e.type === "error") {
       // descarta só a resposta pela metade desta chamada; a pergunta continua salva
@@ -106,7 +134,8 @@ async function go(call: (on: (e: ChatEvent) => void) => Promise<void>) {
   }
 }
 
-async function send() {
+async function send(preset?: string) {
+  if (preset) draft.value = preset;
   const text = draft.value.trim();
   if (!text || busy.value) return;
   draft.value = "";
@@ -135,61 +164,131 @@ async function toggleHistory() {
 }
 
 async function openConversation(id: string) {
+  if (renaming.value) return;
   showHistory.value = false;
   load(await aiConversationOpen(id));
 }
 
-function resolveProposal(p: Proposal, action: "insert" | "scene" | "discard") {
+async function startRename(c: Conversation) {
+  confirmDel.value = null;
+  renaming.value = c.id;
+  renameDraft.value = c.title;
+  await nextTick();
+  (document.getElementById(`conv-rename-${c.id}`) as HTMLInputElement | null)?.select();
+}
+
+async function finishRename(c: Conversation) {
+  if (renaming.value !== c.id) return;
+  renaming.value = null;
+  const t = renameDraft.value.trim();
+  if (!t || t === c.title) return;
+  try {
+    await aiConversationRename(c.id, t);
+    c.title = t;
+  } catch (e) {
+    error.value = errorMessage(e);
+  }
+}
+
+/** Apagar pede um segundo clique. Se era a conversa aberta, começa outra. */
+async function removeConversation(c: Conversation) {
+  if (confirmDel.value !== c.id) return void (confirmDel.value = c.id);
+  confirmDel.value = null;
+  try {
+    await aiConversationDelete(c.id);
+    history.value = history.value.filter((x) => x.id !== c.id);
+    if (!c.closed) load(await aiConversation(props.bookId));
+  } catch (e) {
+    error.value = errorMessage(e);
+  }
+}
+
+const targetName = (p: Proposal) => (p.scene_id ? props.sceneTitles?.[p.scene_id] : null) ?? "cena atual";
+
+function resolveProposal(p: Proposal, action: "insert" | "cursor" | "scene" | "discard") {
   items.value = items.value.filter((i) => !(i.kind === "proposal" && i.id === p.id));
-  if (action === "insert") emit("insertProposal", p);
+  if (action === "insert" || action === "cursor") emit("insertProposal", p, action === "insert" ? "end" : "cursor");
   else if (action === "scene") emit("proposalAsScene", p);
   else emit("discardProposal", p);
 }
 
-defineExpose({ addProposals: (ps: Proposal[]) => ps.forEach((p) => items.value.push({ kind: "proposal", id: p.id, proposal: p })) });
+const KEY_HELP = "https://platform.inworld.ai/";
+const openKeyHelp = () => void openUrl(KEY_HELP).catch(() => window.open(KEY_HELP, "_blank"));
+
+defineExpose({ focusInput: () => input.value?.focus(), addProposals: (ps: Proposal[]) => ps.forEach((p) => items.value.push({ kind: "proposal", id: p.id, proposal: p })) });
 </script>
 
 <template>
   <div class="chat">
     <form v-if="hasKey === false" class="need-key" @submit.prevent="saveKey">
-      <p>Cole a chave da Inworld para começar. Ela fica guardada cifrada neste computador.</p>
+      <p class="lead">O assistente é opcional: o Lume funciona inteiro sem ele.</p>
+      <p>
+        Para usar, ele precisa de uma chave da <strong>Inworld</strong>, o serviço que roda os modelos de IA.
+        Crie uma conta, gere uma chave em “API Keys” e cole aqui. Você paga à Inworld só o que usar:
+        uma conversa costuma custar centavos. Dá para pôr um limite de gasto em Ajustes.
+      </p>
+      <button type="button" class="link how" @click="openKeyHelp">Como conseguir a chave ↗</button>
       <input v-model="keyDraft" type="password" placeholder="Chave da Inworld" aria-label="Chave da Inworld" autocomplete="off" />
       <button class="btn" type="submit" :disabled="!keyDraft.trim()">Salvar chave</button>
+      <p class="fine">A chave fica guardada cifrada neste computador.</p>
       <p v-if="error" class="err" role="alert">{{ error }}</p>
     </form>
 
     <template v-else-if="hasKey">
       <div class="tools">
         <button class="tool" data-test="new-conv" title="Nova conversa" aria-label="Nova conversa" :disabled="busy" @click="newConversation"><IconPlus :size="16" stroke-width="1.75" /></button>
-        <button :class="['tool', { on: showHistory }]" data-test="history" title="Conversas anteriores" aria-label="Conversas anteriores" @click="toggleHistory"><IconHistory :size="16" stroke-width="1.75" /></button>
+        <button :class="['tool', { on: showHistory }]" data-test="history" title="Conversas anteriores" aria-label="Conversas anteriores" @click="toggleHistory"><IconMessages :size="16" stroke-width="1.75" /></button>
       </div>
 
       <ul v-if="showHistory" class="history" aria-label="Conversas anteriores">
-        <li v-for="c in history" :key="c.id">
-          <button class="conv-item" :disabled="busy" @click="openConversation(c.id)">
+        <li v-for="c in history" :key="c.id" class="conv-row">
+          <input
+            v-if="renaming === c.id"
+            :id="`conv-rename-${c.id}`"
+            v-model="renameDraft"
+            class="conv-rename"
+            aria-label="Novo nome da conversa"
+            @keydown.enter.prevent="finishRename(c)"
+            @keydown.esc="renaming = null"
+            @blur="finishRename(c)"
+          />
+          <button v-else class="conv-item" :disabled="busy" @click="openConversation(c.id)">
             <span>{{ c.title }}</span>
             <small>{{ new Date(c.updated_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }) }}{{ c.closed ? "" : " · atual" }}</small>
+          </button>
+          <button class="tool" data-test="conv-rename" title="Renomear" aria-label="Renomear conversa" @click="startRename(c)"><IconPencil :size="13" stroke-width="2" /></button>
+          <button :class="['tool', 'del', { confirm: confirmDel === c.id }]" data-test="conv-delete" :title="confirmDel === c.id ? 'Clique de novo para apagar' : 'Apagar'" aria-label="Apagar conversa" :disabled="busy" @click="removeConversation(c)">
+            <IconTrash :size="13" stroke-width="2" /><span v-if="confirmDel === c.id">Apagar?</span>
           </button>
         </li>
         <li v-if="!history.length" class="empty">Nenhuma conversa ainda.</li>
       </ul>
 
       <div ref="scroller" class="log" aria-live="polite">
-        <p v-if="!items.length && !busy" class="empty">
-          {{ mode === "coautora" ? "Peça ideias, revisões ou um trecho: propostas só entram no livro se você aprovar." : "Pergunte sobre o livro, peça opinião ou ideias. A Conselheira não mexe no seu texto." }}
-        </p>
+        <template v-if="!items.length && !busy">
+          <p class="empty">
+            {{ mode === "coautora" ? "Peça ideias, revisões ou um trecho: propostas só entram no livro se você aprovar." : "Pergunte sobre o livro, peça opinião ou ideias. A Conselheira não mexe no seu texto." }}
+          </p>
+          <div class="suggestions" aria-label="Sugestões de pergunta">
+            <button v-for="q in SUGGESTIONS[mode] ?? SUGGESTIONS.conselheira" :key="q" class="chip" data-test="suggestion" @click="send(q)">{{ q }}</button>
+          </div>
+        </template>
         <template v-for="it in items" :key="it.id">
           <p v-if="it.kind === 'note'" class="note"><IconSearch :size="12" stroke-width="2" /> {{ it.text }}</p>
           <div v-else-if="it.kind === 'proposal'" class="proposal">
-            <p class="proposal-label">Proposta de trecho</p>
+            <p class="proposal-label">Proposta de trecho · para “{{ targetName(it.proposal) }}”</p>
             <p class="proposal-text">{{ it.proposal.text }}</p>
             <div class="proposal-actions">
               <button class="btn small" data-test="p-insert" @click="resolveProposal(it.proposal, 'insert')">Inserir no fim da cena</button>
+              <button class="btn small quiet" data-test="p-cursor" :disabled="!!it.proposal.scene_id && it.proposal.scene_id !== sceneId" title="Insere onde está o cursor (só na cena aberta)" @click="resolveProposal(it.proposal, 'cursor')">No cursor</button>
               <button class="btn small quiet" data-test="p-scene" @click="resolveProposal(it.proposal, 'scene')">Virar cena nova</button>
               <button class="link" data-test="p-discard" @click="resolveProposal(it.proposal, 'discard')">Descartar</button>
             </div>
           </div>
-          <div v-else :class="['msg', it.kind]">{{ it.text }}</div>
+          <template v-else>
+            <div :class="['msg', it.kind]">{{ it.text }}</div>
+            <p v-if="it.kind === 'assistant' && it.meta" class="meta" data-test="meta">{{ it.meta }}</p>
+          </template>
         </template>
         <p v-if="busy" class="typing" aria-label="A IA está respondendo"><span /><span /><span /></p>
         <p v-if="error" class="err" role="alert">
@@ -198,8 +297,8 @@ defineExpose({ addProposals: (ps: Proposal[]) => ps.forEach((p) => items.value.p
         </p>
       </div>
 
-      <form class="composer" @submit.prevent="send">
-        <textarea v-model="draft" rows="2" placeholder="Pergunte algo…" title="Enter envia · Shift+Enter quebra linha" aria-label="Mensagem para a IA" @keydown="onKey" />
+      <form class="composer" @submit.prevent="send()">
+        <textarea ref="input" v-model="draft" rows="2" placeholder="Pergunte algo…" title="Enter envia · Shift+Enter quebra linha" aria-label="Mensagem para a IA" @keydown="onKey" />
         <button class="send" type="submit" title="Enviar" aria-label="Enviar" :disabled="busy || !draft.trim()"><IconArrowUp :size="16" stroke-width="2.25" /></button>
       </form>
     </template>
@@ -217,6 +316,19 @@ defineExpose({ addProposals: (ps: Proposal[]) => ps.forEach((p) => items.value.p
 .conv-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conv-item small { flex: none; color: #8b919c; }
 .conv-item:hover { background: rgba(255, 255, 255, 0.06); }
+.conv-row { display: flex; align-items: center; gap: 0.1rem; }
+.conv-row .conv-item { flex: 1; min-width: 0; }
+.conv-row .tool { opacity: 0; }
+.conv-row:hover .tool, .conv-row .tool:focus-visible, .conv-row .tool.confirm { opacity: 1; }
+.tool.del.confirm { gap: 0.25rem; color: #ff8a80; font-size: 0.72rem; }
+.conv-rename { flex: 1; min-width: 0; margin: 0.15rem 0.2rem; padding: 0.3rem 0.45rem; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 6px; background: rgba(0, 0, 0, 0.2); color: inherit; font-size: 0.82rem; }
+.suggestions { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+.chip { padding: 0.35rem 0.65rem; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 999px; background: none; color: #c9cdd4; font-size: 0.8rem; text-align: left; cursor: pointer; }
+.chip:hover { color: #fff; border-color: rgba(255, 255, 255, 0.28); background: rgba(255, 255, 255, 0.04); }
+.meta { margin: -0.3rem 0 0; font-size: 0.7rem; color: #737985; }
+.need-key .lead { color: #fff; }
+.need-key .how { align-self: flex-start; padding: 0; color: #fff; font-size: 0.82rem; text-decoration: underline; }
+.need-key .fine { font-size: 0.74rem; color: #8b919c; }
 .log { flex: 1; min-height: 0; overflow-y: auto; padding: 0.25rem 0.9rem 0.75rem; display: flex; flex-direction: column; gap: 0.55rem; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.15) transparent; }
 .empty { color: #8b919c; font-size: 0.82rem; margin: 0.5rem 0; }
 .msg { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.88rem; line-height: 1.55; }

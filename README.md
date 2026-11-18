@@ -19,10 +19,10 @@ Os instaladores saem do GitHub, na página de **Releases** (cada versão `vX.Y.Z
 
 Os instaladores ainda não têm a assinatura paga da Apple e da Microsoft, então o sistema avisa:
 
-- **macOS, jeito mais fácil (sem aviso):** com o [GitHub CLI](https://cli.github.com) logado (`gh auth login`), rode no Terminal:
+- **macOS, jeito mais fácil (sem aviso):** rode no Terminal:
 
   ```bash
-  gh api repos/phs-santos/Lume/contents/scripts/install-macos.sh -H "Accept: application/vnd.github.raw" | bash
+  curl -fsSL https://raw.githubusercontent.com/phs-santos/Lume/main/scripts/install-macos.sh | bash
   ```
 
   Ele baixa a versão certa para o seu Mac, confere a soma SHA-256 e põe o Lume em Aplicativos. O mesmo comando atualiza.

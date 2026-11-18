@@ -6,8 +6,7 @@
 # vem do release oficial no GitHub e a soma SHA-256 tem que bater com a do SHA256SUMS.txt do
 # mesmo release.
 #
-# O repositório é privado, então o download usa o `gh` (GitHub CLI) já logado:
-#   gh api repos/phs-santos/Lume/contents/scripts/install-macos.sh -H "Accept: application/vnd.github.raw" | bash
+#   curl -fsSL https://raw.githubusercontent.com/phs-santos/Lume/main/scripts/install-macos.sh | bash
 #
 # LUME_VERSAO escolhe uma versão (ex.: v0.1.0; padrão: a mais recente publicada).
 # LUME_DESTINO troca a pasta (padrão: /Applications, ou ~/Applications sem permissão).
@@ -21,9 +20,7 @@ erro() {
     exit 1
 }
 
-[ "$(uname -s)" = "Darwin" ] || erro "este instalador é só para macOS."
-command -v gh >/dev/null || erro "precisa do GitHub CLI: brew install gh && gh auth login"
-gh auth status >/dev/null 2>&1 || erro "entre no GitHub CLI primeiro: gh auth login"
+[ "$(uname -s)" = "Darwin" ] || erro "este instalador é só para macOS. Os outros sistemas estão em https://github.com/$REPO/releases/latest"
 
 # Chip Apple, inclusive quando o Terminal roda pelo Rosetta.
 if [ "$(uname -m)" = "arm64" ] || [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = "1" ]; then
@@ -39,21 +36,26 @@ fi
 tmp="$(mktemp -d)"
 trap 'hdiutil detach -quiet "$tmp/mnt" 2>/dev/null || true; rm -rf "$tmp"' EXIT
 
-versao="${LUME_VERSAO:-}"
-if [ -z "$versao" ]; then
-    versao="$(gh release view --repo "$REPO" --json tagName -q .tagName 2>/dev/null)" || erro "não achei nenhum release publicado."
+if [ -n "${LUME_VERSAO:-}" ]; then
+    base="https://github.com/$REPO/releases/download/$LUME_VERSAO"
+else
+    base="https://github.com/$REPO/releases/latest/download"
 fi
 
+echo "Procurando a versão…"
+curl -fsSL "$base/SHA256SUMS.txt" -o "$tmp/SHA256SUMS.txt" || erro "não deu para falar com o GitHub (ou ainda não há release publicado). Confira a internet."
+# o nome do .dmg (com a versão) vem da própria lista de somas
+nome="$(awk -v a="_${arch}.dmg" 'substr($2, length($2) - length(a) + 1) == a { print $2; exit }' "$tmp/SHA256SUMS.txt")"
+esperado="$(awk -v f="$nome" '$2 == f { print $1 }' "$tmp/SHA256SUMS.txt")"
+[ -n "$nome" ] && [ -n "$esperado" ] || erro "o release não tem o .dmg para $arch."
+versao="$(echo "$nome" | sed -E 's/^Lume_(.*)_[^_]+\.dmg$/\1/')"
+dmg="$tmp/$nome"
+
 echo "Baixando o Lume $versao ($arch)…"
-gh release download "$versao" --repo "$REPO" --dir "$tmp" --pattern "*_${arch}.dmg" --pattern "SHA256SUMS.txt" \
-    || erro "o download falhou (o release $versao tem o .dmg de $arch e o SHA256SUMS.txt?)."
-dmg="$(ls "$tmp"/*_"$arch".dmg | head -1)"
-nome="$(basename "$dmg")"
+curl -fL --progress-bar "$base/$nome" -o "$dmg" || erro "o download falhou."
 
 echo "Conferindo o arquivo…"
-esperado="$(awk -v f="$nome" '$2 == f { print $1 }' "$tmp/SHA256SUMS.txt")"
 obtido="$(shasum -a 256 "$dmg" | cut -d' ' -f1)"
-[ -n "$esperado" ] || erro "o SHA256SUMS.txt não lista $nome."
 [ "$obtido" = "$esperado" ] || erro "o arquivo não confere com o release (SHA-256 diferente). Nada foi instalado."
 
 mkdir "$tmp/mnt"

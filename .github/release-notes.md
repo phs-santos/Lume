@@ -23,10 +23,10 @@ Baixe só o arquivo do seu sistema:
 | Linux (Debian, Ubuntu, Mint) | [Lume_VERSION_amd64.deb](https://github.com/phs-santos/Lume/releases/download/vVERSION/Lume_VERSION_amd64.deb) |
 | Linux (outras distribuições) | [Lume_VERSION_amd64.AppImage](https://github.com/phs-santos/Lume/releases/download/vVERSION/Lume_VERSION_amd64.AppImage) |
 
-**No Mac, o jeito mais fácil é pelo Terminal**, que não mostra o aviso da Apple. O comando escolhe a versão certa para o seu chip, confere o arquivo e coloca o Lume em Aplicativos (precisa do [GitHub CLI](https://cli.github.com) logado, com `gh auth login`):
+**No Mac, o jeito mais fácil é pelo Terminal**, que não mostra o aviso da Apple. O comando escolhe a versão certa para o seu chip, confere o arquivo e coloca o Lume em Aplicativos:
 
 ```bash
-gh api repos/phs-santos/Lume/contents/scripts/install-macos.sh -H "Accept: application/vnd.github.raw" | bash
+curl -fsSL https://raw.githubusercontent.com/phs-santos/Lume/main/scripts/install-macos.sh | bash
 ```
 
 No Mac, se for usar o `.dmg`, veja o chip em **menu Apple → Sobre Este Mac**: "Apple M…" usa o `aarch64`; "Intel" usa o `x64`.

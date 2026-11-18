@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { Editor } from "@tiptap/core";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { editorOptions } from "./editorConfig";
 
 /** Digita caractere a caractere passando pelas regras de entrada, como um teclado. */
@@ -13,7 +13,14 @@ function type(editor: Editor, text: string) {
 }
 
 describe("editor não transforma a prosa", () => {
-  const make = () => new Editor({ ...editorOptions(), element: document.createElement("div") });
+  // destruir os editores evita um temporizador do ProseMirror disparando depois do fim do teste
+  const editors: Editor[] = [];
+  afterEach(() => editors.splice(0).forEach((e) => e.destroy()));
+  const make = () => {
+    const e = new Editor({ ...editorOptions(), element: document.createElement("div") });
+    editors.push(e);
+    return e;
+  };
 
   it("*Não* continua com asteriscos, sem itálico", () => {
     const e = make();

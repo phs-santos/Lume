@@ -5,6 +5,7 @@ import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { toDocx } from "../../lib/export/docx";
 import { toMarkdown } from "../../lib/export/markdown";
+import { toPdf } from "../../lib/export/pdf";
 import type { ExportBook } from "../../lib/export/types";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { aiSceneTouched, bookSetMode, proposalSetStatus, bookOutline, chapterCreate, inboxList, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRestore, sceneSave, sceneVersions, settingGet, settingSet } from "../../lib/api";
@@ -154,15 +155,27 @@ async function restore(v: Version) {
   await reloadOutline();
 }
 
-async function exportBook(format: "md" | "docx") {
+const exportScope = ref<"book" | "scene">("book");
+const exportTitles = ref(false);
+const FORMATS = {
+  docx: { name: "Word", ext: "docx" },
+  pdf: { name: "PDF", ext: "pdf" },
+  md: { name: "Markdown", ext: "md" },
+} as const;
+
+async function exportBook(format: keyof typeof FORMATS) {
   exportMsg.value = "";
   if (!outline.value || !(await flushSafely())) return;
   try {
     const o = await bookOutline(props.bookId);
+    const onlyScene = exportScope.value === "scene" ? scene.value?.id : null;
+    const chapters = onlyScene
+      ? o.chapters.filter((c) => c.scenes.some((s) => s.id === onlyScene)).map((c) => ({ ...c, scenes: c.scenes.filter((s) => s.id === onlyScene) }))
+      : o.chapters;
     const book: ExportBook = {
       title: o.book.title,
       chapters: await Promise.all(
-        o.chapters.map(async (c) => ({
+        chapters.map(async (c) => ({
           title: c.chapter.title,
           scenes: await Promise.all(
             c.scenes.map(async (s) => ({ title: s.title, doc: JSON.parse((await sceneGet(s.id)).content_json) })),
@@ -170,13 +183,14 @@ async function exportBook(format: "md" | "docx") {
         })),
       ),
     };
-    const name = o.book.title.replace(/[\\/:*?"<>|]/g, "-");
-    const path = await saveDialog({
-      defaultPath: `${name}.${format}`,
-      filters: [format === "md" ? { name: "Markdown", extensions: ["md"] } : { name: "Word", extensions: ["docx"] }],
-    });
+    const base = onlyScene ? `${o.book.title} - ${scene.value?.title ?? "cena"}` : o.book.title;
+    const name = base.replace(/[\\/:*?"<>|]/g, "-");
+    const f = FORMATS[format];
+    const path = await saveDialog({ defaultPath: `${name}.${f.ext}`, filters: [{ name: f.name, extensions: [f.ext] }] });
     if (!path) return;
-    const bytes = format === "md" ? new TextEncoder().encode(toMarkdown(book)) : await toDocx(book);
+    const opts = { sceneTitles: exportTitles.value };
+    const bytes =
+      format === "md" ? new TextEncoder().encode(toMarkdown(book, opts)) : format === "pdf" ? toPdf(book, opts) : await toDocx(book, opts);
     await writeFile(path, bytes);
     exportMsg.value = `Exportado para ${path}`;
   } catch (e) {
@@ -434,9 +448,15 @@ onBeforeUnmount(() => {
       />
 
       <aside v-if="panel === 'export'" class="versions" aria-label="Exportar o livro">
-        <p class="hint">O livro inteiro, na ordem do sumário. Os títulos das cenas não saem no arquivo.</p>
+        <div class="seg export-scope" role="radiogroup" aria-label="O que exportar">
+          <button role="radio" :aria-checked="exportScope === 'book'" @click="exportScope = 'book'">Livro inteiro</button>
+          <button role="radio" :aria-checked="exportScope === 'scene'" :disabled="!scene" @click="exportScope = 'scene'">Só esta cena</button>
+        </div>
+        <label class="check-row"><input v-model="exportTitles" type="checkbox" /> Incluir o título de cada cena</label>
+        <p class="hint">Na ordem do sumário. Entre as cenas sai um separador (* * *).</p>
         <div class="actions">
-          <button class="btn" @click="exportBook('docx')">Exportar para Word</button>
+          <button class="btn" @click="exportBook('docx')">Word</button>
+          <button class="btn quiet" @click="exportBook('pdf')">PDF</button>
           <button class="btn quiet" @click="exportBook('md')">Markdown</button>
         </div>
         <p v-if="exportMsg" class="hint export-msg">{{ exportMsg }}</p>
@@ -560,5 +580,11 @@ onBeforeUnmount(() => {
 .versions li { display: grid; grid-template-columns: 1fr auto; gap: 0.1rem 1rem; padding: 0.5rem 0; border-bottom: 1px solid var(--rule); }
 .versions li .link { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
 .export-msg { margin-top: 0.75rem; word-break: break-all; }
+.export-scope { display: flex; margin-bottom: 0.6rem; padding: 2px; border: 1px solid var(--rule); border-radius: 8px; }
+.export-scope button { flex: 1; border: 0; border-radius: 6px; background: none; padding: 0.3rem 0.5rem; color: var(--note); font-size: 0.82rem; cursor: pointer; }
+.export-scope button[aria-checked="true"] { background: var(--ink); color: var(--paper); }
+.check-row { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.5rem; font-size: 0.85rem; }
+.check-row input { accent-color: var(--ribbon); }
+.versions .actions { display: flex; gap: 0.4rem; margin-top: 0.75rem; }
 .hint { color: var(--note); font-size: 0.8rem; margin: 0; }
 </style>

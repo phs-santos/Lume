@@ -21,4 +21,9 @@ describe("toMarkdown", () => {
   it("não exporta o título da cena", () => {
     expect(md).not.toContain("Cena 1");
   });
+  it("com a opção, exporta o título de cada cena", () => {
+    const withTitles = toMarkdown(book, { sceneTitles: true });
+    expect(withTitles).toContain("## Capítulo 1\n\n### Cena 1\n\n— Você viu?");
+    expect(withTitles).toContain("* * *\n\n### Cena 2\n\nDepois.");
+  });
 });

@@ -5,6 +5,31 @@ editor em que a linha atual fica sempre no meio da tela, e exportação para Wor
 
 Design: [docs/superpowers/specs/2026-11-17-maquina-de-escrever-design.md](docs/superpowers/specs/2026-11-17-maquina-de-escrever-design.md)
 
+## Instalar
+
+Os instaladores saem do GitHub, na página de **Releases** (cada versão `vX.Y.Z` gera todos sozinha).
+
+| Sistema | Arquivo |
+| --- | --- |
+| Windows | `Lume_<versão>_x64-setup.exe` (ou o `.msi`) |
+| macOS com chip Apple (M1 ou mais novo) | `Lume_<versão>_aarch64.dmg` |
+| macOS (Intel) | `Lume_<versão>_x64.dmg` |
+| Linux (Debian, Ubuntu, Mint) | `Lume_<versão>_amd64.deb` |
+| Linux (outras distribuições) | `Lume_<versão>_amd64.AppImage` (dê permissão: `chmod +x`) |
+
+Os instaladores ainda não têm a assinatura paga da Apple e da Microsoft, então o sistema avisa:
+
+- **macOS, jeito mais fácil (sem aviso):** com o [GitHub CLI](https://cli.github.com) logado (`gh auth login`), rode no Terminal:
+
+  ```bash
+  gh api repos/phs-santos/Lume/contents/scripts/install-macos.sh -H "Accept: application/vnd.github.raw" | bash
+  ```
+
+  Ele baixa a versão certa para o seu Mac, confere a soma SHA-256 e põe o Lume em Aplicativos. O mesmo comando atualiza.
+- **macOS, pelo `.dmg`:** arraste o Lume para Aplicativos e abra. No aviso, vá em **Ajustes do Sistema → Privacidade
+  e Segurança → Abrir Mesmo Assim**. Ou, no Terminal: `xattr -dr com.apple.quarantine /Applications/Lume.app`.
+- **Windows:** no aviso do SmartScreen, clique em **Mais informações → Executar assim mesmo**.
+
 ## Desenvolvimento
 
 Precisa de Node 20+ e Rust (stable).
@@ -26,7 +51,10 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ## Gerar o instalador
 
-macOS (gera `.dmg` em `src-tauri/target/release/bundle/dmg/`):
+Para um release: suba a versão em `src-tauri/tauri.conf.json` e `package.json`, faça o commit e crie a tag
+(`git tag v0.2.0 && git push origin v0.2.0`). O GitHub Actions gera tudo e deixa um release em rascunho para publicar.
+
+Localmente, no macOS (gera `.dmg` em `src-tauri/target/release/bundle/dmg/`):
 
 ```bash
 npm run tauri build

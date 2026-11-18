@@ -215,7 +215,7 @@ function resolveProposal(p: Proposal, action: "insert" | "cursor" | "scene" | "d
 const KEY_HELP = "https://platform.inworld.ai/";
 const openKeyHelp = () => void openUrl(KEY_HELP).catch(() => window.open(KEY_HELP, "_blank"));
 
-defineExpose({ focusInput: () => input.value?.focus(), addProposals: (ps: Proposal[]) => ps.forEach((p) => items.value.push({ kind: "proposal", id: p.id, proposal: p })) });
+defineExpose({ focusInput: () => input.value?.focus(), newConversation: () => (busy.value ? Promise.resolve() : newConversation()), addProposals: (ps: Proposal[]) => ps.forEach((p) => items.value.push({ kind: "proposal", id: p.id, proposal: p })) });
 </script>
 
 <template>

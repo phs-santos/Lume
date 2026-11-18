@@ -27,13 +27,21 @@ function chooseMode(m: AiMode) {
   emit("setMode", m);
 }
 
-const chat = ref<{ focusInput: () => void } | null>(null);
+const chat = ref<{ focusInput: () => void; newConversation: () => Promise<void> } | null>(null);
 /** Usado pelo ⌘J: mostra a conversa e põe o cursor no campo de mensagem. */
 function focusInput() {
   tab.value = "chat";
   void nextTick(() => chat.value?.focusInput());
 }
-defineExpose({ focusInput });
+function newConversation() {
+  tab.value = "chat";
+  void nextTick(async () => {
+    await chat.value?.newConversation();
+    chat.value?.focusInput();
+  });
+}
+const toggleTab = () => (tab.value = tab.value === "chat" ? "bible" : "chat");
+defineExpose({ focusInput, newConversation, toggleTab });
 
 const tab = ref<"chat" | "bible">("chat");
 const reading = ref<{ done: number; total: number } | null>(null);

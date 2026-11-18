@@ -40,7 +40,14 @@ async function setAssistant(open: boolean) {
 }
 const toggleAssistant = () => setAssistant(!assistant.value);
 
-const assistantPanel = ref<{ focusInput: () => void; $el: HTMLElement } | null>(null);
+const assistantPanel = ref<{ focusInput: () => void; newConversation: () => void; toggleTab: () => void; $el: HTMLElement } | null>(null);
+
+/** Atalhos do assistente: abrem o painel se estiver fechado. */
+async function withAssistant(f: (p: NonNullable<typeof assistantPanel.value>) => void) {
+  if (!assistant.value) await setAssistant(true);
+  await nextTick();
+  if (assistantPanel.value) f(assistantPanel.value);
+}
 
 /** ⌘J: abre o assistente e põe o cursor na mensagem; só fecha se o cursor já estiver nele. */
 async function assistantShortcut() {
@@ -300,6 +307,8 @@ async function run(action: Action) {
       case "help": togglePanel("help"); break;
       case "ideas": togglePanel("ideas"); break;
       case "assistant": await assistantShortcut(); break;
+      case "newConversation": await withAssistant((p) => p.newConversation()); break;
+      case "assistantTab": await withAssistant((p) => p.toggleTab()); break;
       case "close": panel.value = "none"; break;
     }
   } catch (e) {
@@ -329,6 +338,11 @@ onMounted(async () => {
   try {
     await loadPrefs();
     assistant.value = (await settingGet("assistant_open")) === "1";
+    // primeira vez num livro: mostra os primeiros passos
+    if ((await settingGet("onboarding_done")) !== "1") {
+      panel.value = "help";
+      void settingSet("onboarding_done", "1").catch(() => {});
+    }
     await reloadOutline();
     const first = outline.value?.chapters.flatMap((c) => c.scenes)[0];
     if (first) scene.value = await sceneGet(first.id);

@@ -11,6 +11,8 @@ export type Action =
   | "versions"
   | "ideas"
   | "assistant"
+  | "newConversation"
+  | "assistantTab"
   | "export"
   | "settings"
   | "help"
@@ -36,11 +38,13 @@ export const SHORTCUTS: Shortcut[] = [
   { action: "toggleFocus", key: "f", mod: true, shift: true, description: "Modo foco", group: "Aparência" },
   { action: "toggleTheme", key: "l", mod: true, shift: true, description: "Papel claro ou escuro", group: "Aparência" },
   { action: "assistant", key: "j", mod: true, description: "Assistente de IA", group: "Painéis" },
+  { action: "newConversation", key: "j", mod: true, shift: true, description: "Nova conversa com a IA", group: "Painéis" },
+  { action: "assistantTab", key: "b", mod: true, shift: true, description: "Alternar Conversa e Bíblia", group: "Painéis" },
   { action: "ideas", key: "i", mod: true, shift: true, description: "Ideias do celular", group: "Painéis" },
   { action: "versions", key: "h", mod: true, shift: true, description: "Versões da cena", group: "Painéis" },
   { action: "export", key: "e", mod: true, shift: true, description: "Exportar o livro", group: "Painéis" },
   { action: "settings", key: ",", mod: true, description: "Ajustes", group: "Painéis" },
-  { action: "help", key: "/", mod: true, description: "Ver os atalhos", group: "Painéis" },
+  { action: "help", key: "/", mod: true, description: "Ajuda e atalhos", group: "Painéis" },
   { action: "close", key: "Escape", mod: false, description: "Fechar o painel aberto", group: "Painéis" },
 ];
 

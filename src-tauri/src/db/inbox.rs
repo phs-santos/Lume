@@ -120,7 +120,8 @@ pub fn inbox_to_scene(c: &Connection, id: &str, chapter_id: &str, index: Option<
 
 /// Áudios esperando transcrição, mais antigos primeiro.
 pub fn inbox_pending_audio(c: &Connection) -> Result<Vec<String>, DbError> {
-    let mut st = c.prepare("SELECT id FROM inbox WHERE kind='audio' AND transcript_status='pendente' ORDER BY created_at, rowid")?;
+    let mut st = c.prepare("SELECT id FROM inbox WHERE kind='audio' AND (transcript_status='pendente' OR transcript_status IS NULL)
+         ORDER BY created_at, rowid")?;
     let ids = st.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
     Ok(ids)
 }
@@ -138,7 +139,7 @@ pub fn inbox_set_transcript(c: &Connection, id: &str, status: &str, text: Option
 
 /// Sem chave de IA: os pendentes esperam como `sem_chave`.
 pub fn inbox_mark_no_key(c: &Connection) -> Result<usize, DbError> {
-    Ok(c.execute("UPDATE inbox SET transcript_status='sem_chave' WHERE transcript_status='pendente'", [])?)
+    Ok(c.execute("UPDATE inbox SET transcript_status='sem_chave' WHERE kind='audio' AND (transcript_status='pendente' OR transcript_status IS NULL)", [])?)
 }
 
 /// Chave configurada: os que esperavam voltam para a fila.

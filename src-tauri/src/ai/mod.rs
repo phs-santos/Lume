@@ -6,5 +6,6 @@ pub mod provider;
 pub mod stt;
 pub mod text;
 pub mod tools;
+pub mod transcribe;
 #[cfg(test)]
 pub mod testkit;

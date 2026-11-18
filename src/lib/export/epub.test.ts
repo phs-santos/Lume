@@ -125,4 +125,16 @@ describe("EPUB", () => {
     expect(ch.getElementsByTagName("img")).toHaveLength(0);
     expect(ch.documentElement.textContent).toContain("Mapa & serra");
   });
+
+  it("caracteres de controle colados no texto não quebram o XML", async () => {
+    const dirty: EpubInput = { ...full, chapters: [{ title: "C\u0007", scenes: [{ title: "s", doc: { type: "doc", content: [p("Texto\u0001 com\u001F lixo")] } }] }] };
+    const { read } = await open(dirty);
+    const ch = await read("OEBPS/chapter-1.xhtml");
+    expect(ch).toContain("Texto com lixo");
+    expect(/[\u0000-\u0008]/.test(ch)).toBe(false);
+  });
+
+  it("livro sem nenhuma cena: recusa com mensagem clara", async () => {
+    await expect(toEpub({ ...full, chapters: [{ title: "Vazio", scenes: [] }] })).rejects.toThrow("nenhuma cena");
+  });
 });

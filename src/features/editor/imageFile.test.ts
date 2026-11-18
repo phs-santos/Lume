@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { fitWithin, prepareImage } from "./imageFile";
+import { fitWithin, pastedImages, prepareImage } from "./imageFile";
+
+describe("pastedImages", () => {
+  const png = new File([new Uint8Array([1])], "a.png", { type: "image/png" });
+  it("imagem sozinha entra como imagem", () => expect(pastedImages([png], ["Files"])).toEqual([png]));
+  it("colar do Word (texto + imagem do trecho) fica como texto", () => {
+    expect(pastedImages([png], ["text/plain", "text/html", "Files"])).toEqual([]);
+  });
+  it("ignora arquivos que não são imagem", () => {
+    expect(pastedImages([new File(["x"], "a.txt", { type: "text/plain" })], ["Files"])).toEqual([]);
+  });
+});
 
 describe("fitWithin", () => {
   it("reduz mantendo a proporção", () => expect(fitWithin(3000, 2000)).toEqual({ width: 1600, height: 1067 }));

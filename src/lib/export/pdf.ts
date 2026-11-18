@@ -1,4 +1,4 @@
-import { figureLabel } from "./docx";
+import { figureLabel } from "./common";
 import type { JSONContent } from "@tiptap/core";
 import { jsPDF } from "jspdf";
 import type { ExportBook, ExportOptions } from "./types";

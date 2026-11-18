@@ -24,19 +24,24 @@ export const Figure = Node.create({
         tag: "figure[data-lume]",
         getAttrs: (el) => {
           const e = el as HTMLElement;
-          return { src: e.getAttribute("data-src"), caption: e.querySelector("figcaption")?.textContent ?? "" };
+          const num = (k: string) => (e.getAttribute(k) ? Number(e.getAttribute(k)) : null);
+          return { src: e.getAttribute("data-src"), caption: e.querySelector("figcaption")?.textContent ?? "", width: num("data-width"), height: num("data-height") };
         },
       },
     ];
   },
   renderHTML({ HTMLAttributes, node }) {
-    return ["figure", mergeAttributes({ "data-lume": "", "data-src": node.attrs.src }, HTMLAttributes), ["figcaption", {}, node.attrs.caption ?? ""]];
+    return ["figure", mergeAttributes({ "data-lume": "", "data-src": node.attrs.src, "data-width": node.attrs.width, "data-height": node.attrs.height }, HTMLAttributes), ["figcaption", {}, node.attrs.caption ?? ""]];
   },
 });
 
 export const imageId = (src: string | null | undefined) => (src?.startsWith("lume-img:") ? src.slice(9) : null);
 
-/** Insere a imagem onde está o cursor (no meio de um parágrafo, ele se divide). */
+/**
+ * Insere a imagem onde está o cursor (no meio de um parágrafo, ele se divide). Com algo
+ * selecionado (ex.: outra figura), entra depois da seleção em vez de substituí-la.
+ */
 export function insertFigure(e: Editor, id: string, width: number, height: number) {
-  e.chain().focus().insertContent({ type: "figure", attrs: { src: `lume-img:${id}`, caption: "", width, height } }).run();
+  const at = e.state.selection.empty ? e.state.selection.from : e.state.selection.to;
+  e.chain().focus().insertContentAt(at, { type: "figure", attrs: { src: `lume-img:${id}`, caption: "", width, height } }).run();
 }

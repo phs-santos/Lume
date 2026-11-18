@@ -49,4 +49,15 @@ describe("Ficha do livro", () => {
       back_image_id: null,
     });
   });
+
+  it("se a ficha não carregar, não deixa salvar por cima", async () => {
+    vi.mocked(api.bookMetaGet).mockRejectedValueOnce("sem banco");
+    const el = await mount();
+    const btn = el.querySelector('[data-test="save"]') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    btn.click();
+    await flush();
+    expect(api.bookMetaSet).not.toHaveBeenCalled();
+    expect(el.textContent).toContain("Não consegui abrir a ficha");
+  });
 });

@@ -17,7 +17,8 @@ export type EpubInput = ExportBook & {
 
 const ext = (mime: string) => (mime === "image/png" ? "png" : mime === "image/gif" ? "gif" : "jpg");
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+/** Escapa para XML; tira caracteres de controle, que deixariam o arquivo inválido. */
+const esc = (s: string) => s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 /** Página XHTML do EPUB 3. */
 function page(title: string, body: string, bodyClass = ""): string {
@@ -161,6 +162,8 @@ export async function toEpub(b: EpubInput, opts: ExportOptions = {}): Promise<Ui
 
   // capítulos
   const chapters = b.chapters.filter((c) => c.scenes.length);
+  // sumário vazio deixaria o EPUB inválido
+  if (!chapters.length) throw new Error("O livro ainda não tem nenhuma cena para exportar.");
   const chapterFiles = chapters.map((c, i) => {
     const file = `chapter-${i + 1}.xhtml`;
     const parts = c.scenes.map((s) => {

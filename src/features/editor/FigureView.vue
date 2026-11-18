@@ -21,6 +21,11 @@ onMounted(async () => {
 function setCaption(e: Event) {
   props.updateAttributes({ caption: (e.target as HTMLInputElement).value });
 }
+
+/** Teclas da legenda não vão para o editor; atalhos com ⌘/Ctrl (salvar, ajuda…) continuam valendo. */
+function captionKey(e: KeyboardEvent) {
+  if (!e.metaKey && !e.ctrlKey) e.stopPropagation();
+}
 </script>
 
 <!-- Imagem no meio do texto, com legenda que se edita direto embaixo dela. -->
@@ -35,7 +40,7 @@ function setCaption(e: Event) {
       aria-label="Legenda da imagem"
       spellcheck="true"
       @input="setCaption"
-      @keydown.stop
+      @keydown="captionKey"
     />
   </NodeViewWrapper>
 </template>

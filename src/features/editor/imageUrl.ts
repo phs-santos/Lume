@@ -12,3 +12,9 @@ export function imageUrl(id: string): Promise<string> {
   }
   return p;
 }
+
+/** Esquece as imagens já abertas e libera a memória delas (ao fechar o livro, trancar ou trocar de usuário). */
+export function clearImageUrls() {
+  for (const p of cache.values()) p.then((u) => URL.revokeObjectURL(u), () => {});
+  cache.clear();
+}

@@ -40,4 +40,24 @@ describe("imagem no texto", () => {
     }));
     expect(e.getJSON().content![0]).toMatchObject({ type: "figure", attrs: { src: "lume-img:x", caption: "Mapa da serra" } });
   });
+
+  it("colar com uma figura selecionada não a substitui", () => {
+    const e = make();
+    e.commands.setTextSelection(13);
+    insertFigure(e, "um", 10, 10);
+    const pos = e.getJSON().content!.findIndex((n) => n.type === "figure");
+    let at = 0;
+    e.state.doc.forEach((n, off, i) => { if (i === pos) at = off; });
+    e.commands.setNodeSelection(at);
+    insertFigure(e, "dois", 10, 10);
+    const srcs = e.getJSON().content!.filter((n) => n.type === "figure").map((n) => n.attrs!.src);
+    expect(srcs).toEqual(["lume-img:um", "lume-img:dois"]);
+  });
+
+  it("largura e altura sobrevivem a copiar e colar (HTML)", () => {
+    const e = make();
+    e.commands.setContent('<figure data-lume="" data-src="lume-img:x" data-width="800" data-height="600"><figcaption>Serra</figcaption></figure>');
+    expect(e.getJSON().content![0].attrs).toMatchObject({ src: "lume-img:x", caption: "Serra", width: 800, height: 600 });
+    expect(e.getHTML()).toContain('data-width="800"');
+  });
 });

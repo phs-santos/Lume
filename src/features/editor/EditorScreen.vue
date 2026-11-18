@@ -28,6 +28,7 @@ import { coverColor } from "../../lib/coverColor";
 import InboxPanel from "../inbox/InboxPanel.vue";
 import { isMac, label, matchShortcut, SHORTCUTS, type Action } from "./shortcuts";
 import { useAutosave } from "./useAutosave";
+import { clearImageUrls } from "./imageUrl";
 import { handleCloseRequest, registerFlusher } from "./exitGuard";
 
 const props = defineProps<{ bookId: string }>();
@@ -312,10 +313,17 @@ const typewriter = ref<{
 /** Imagens coladas, arrastadas ou escolhidas: reduz, guarda cifrada e insere no cursor. */
 async function addImages(files: File[]) {
   if (!scene.value) return void (error.value = "Abra uma cena para inserir a imagem.");
+  const target = scene.value.id;
   for (const f of files) {
     try {
       const img = await prepareImage(f);
       const id = await imageAdd(props.bookId, img.mime, toBase64(img.bytes), img.width, img.height);
+      // trocou de cena enquanto a imagem era preparada: não insere na cena errada
+      // (a imagem sem uso é apagada depois pela limpeza)
+      if (scene.value?.id !== target) {
+        error.value = "A cena mudou antes de a imagem ficar pronta. Cole de novo na cena certa.";
+        return;
+      }
       typewriter.value?.insertImage(id, img.width, img.height);
     } catch (e) {
       error.value = errorMessage(e);
@@ -479,6 +487,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  clearImageUrls();
   window.removeEventListener("keydown", onKey);
   window.removeEventListener("blur", flushOnBlur);
   unlistenClose?.();

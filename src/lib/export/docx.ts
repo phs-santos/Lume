@@ -1,5 +1,6 @@
 import type { JSONContent } from "@tiptap/core";
 import { AlignmentType, Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx";
+import { figureLabel } from "./common";
 import type { ExportBook, ExportOptions } from "./types";
 
 function runs(nodes: JSONContent[] = []): TextRun[] {
@@ -10,11 +11,6 @@ function runs(nodes: JSONContent[] = []): TextRun[] {
   });
 }
 
-/** Imagens ainda não vão para o Word: no lugar, a legenda entre colchetes. */
-export function figureLabel(n: JSONContent): string {
-  const cap = String(n.attrs?.caption ?? "").trim();
-  return cap ? `[Imagem: ${cap}]` : "[Imagem]";
-}
 
 /** Achata blocos (citação, listas) em parágrafos de texto corrido. */
 function paragraphs(doc: JSONContent): Paragraph[] {

@@ -3,7 +3,7 @@ import { IconX } from "@tabler/icons-vue";
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { bookMetaGet, bookMetaSet, imageAdd } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
-import { prepareImage, toBase64 } from "../editor/imageFile";
+import { COVER_SIDE, prepareImage, toBase64 } from "../editor/imageFile";
 import { imageUrl } from "../editor/imageUrl";
 import { generateCover } from "./cover";
 
@@ -19,6 +19,8 @@ const coverPreview = ref<string | null>(null);
 const backPreview = ref<string | null>(null);
 const error = ref("");
 const busy = ref(false);
+/** Só deixa salvar depois de carregar a ficha (senão gravaria tudo vazio por cima). */
+const loaded = ref(false);
 let generatedUrl: string | null = null;
 let redraw: ReturnType<typeof setTimeout> | null = null;
 /** A capa gerada acompanha o nome do autor enquanto ela digita. */
@@ -40,7 +42,13 @@ async function showGenerated() {
 }
 
 onMounted(async () => {
-  const m = await bookMetaGet(props.bookId);
+  let m;
+  try {
+    m = await bookMetaGet(props.bookId);
+  } catch (e) {
+    error.value = `Não consegui abrir a ficha: ${errorMessage(e)}`;
+    return;
+  }
   author.value = m.author ?? "";
   synopsis.value = m.synopsis ?? "";
   dedication.value = m.dedication ?? "";
@@ -48,9 +56,13 @@ onMounted(async () => {
   backId.value = m.back_image_id;
   if (coverId.value) coverPreview.value = await imageUrl(coverId.value).catch(() => null);
   if (backId.value) backPreview.value = await imageUrl(backId.value).catch(() => null);
+  loaded.value = true;
   await showGenerated();
 });
-onBeforeUnmount(() => generatedUrl && URL.revokeObjectURL(generatedUrl));
+onBeforeUnmount(() => {
+  if (redraw) clearTimeout(redraw);
+  if (generatedUrl) URL.revokeObjectURL(generatedUrl);
+});
 
 async function pick(which: "cover" | "back", e: Event) {
   const f = (e.target as HTMLInputElement).files?.[0];
@@ -58,7 +70,7 @@ async function pick(which: "cover" | "back", e: Event) {
   if (!f) return;
   error.value = "";
   try {
-    const img = await prepareImage(f);
+    const img = await prepareImage(f, COVER_SIDE);
     const id = await imageAdd(props.bookId, img.mime, toBase64(img.bytes), img.width, img.height);
     const url = await imageUrl(id);
     if (which === "cover") [coverId.value, coverPreview.value] = [id, url];
@@ -74,6 +86,7 @@ function useGenerated() {
 }
 
 async function save() {
+  if (!loaded.value) return;
   busy.value = true;
   error.value = "";
   try {
@@ -131,7 +144,7 @@ async function save() {
       </div>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <div class="actions end">
-        <button class="btn" data-test="save" :disabled="busy" @click="save">Salvar ficha</button>
+        <button class="btn" data-test="save" :disabled="busy || !loaded" @click="save">Salvar ficha</button>
       </div>
     </section>
   </div>

@@ -1,6 +1,19 @@
 /** Imagens que entram no texto: reduzidas antes de ir para o banco. */
 export const MAX_SIDE = 1600;
 export const MAX_BYTES = 10 * 1024 * 1024;
+/** Capa e contracapa: maiores, para ficarem nítidas no EPUB. */
+export const COVER_SIDE = 2560;
+/** Acima disso a imagem é recusada (protege contra imagens "bomba" que explodem a memória). */
+export const MAX_PIXELS = 100_000_000;
+
+/**
+ * Imagens de um colar. Word e Pages mandam uma imagem do trecho junto com o texto: nesse caso
+ * vale o texto (devolve lista vazia).
+ */
+export function pastedImages(files: File[], types: readonly string[]): File[] {
+  if (types.includes("text/plain") || types.includes("text/html")) return [];
+  return files.filter((f) => f.type.startsWith("image/"));
+}
 
 /** Novo tamanho com o lado maior até `max`, mantendo a proporção. */
 export function fitWithin(w: number, h: number, max = MAX_SIDE): { width: number; height: number } {
@@ -9,7 +22,7 @@ export function fitWithin(w: number, h: number, max = MAX_SIDE): { width: number
 }
 
 /** Lê, reduz e recodifica: JPEG 0,85, ou PNG quando a imagem tem transparência. */
-export async function prepareImage(file: Blob): Promise<{ mime: string; bytes: Uint8Array; width: number; height: number }> {
+export async function prepareImage(file: Blob, maxSide = MAX_SIDE): Promise<{ mime: string; bytes: Uint8Array; width: number; height: number }> {
   if (!file.type.startsWith("image/")) throw new Error("Esse arquivo não é uma imagem.");
   if (file.size > MAX_BYTES) throw new Error("Imagem grande demais (máx. 10 MB).");
   let bmp: ImageBitmap;
@@ -18,7 +31,11 @@ export async function prepareImage(file: Blob): Promise<{ mime: string; bytes: U
   } catch {
     throw new Error("Não consegui abrir essa imagem.");
   }
-  const { width, height } = fitWithin(bmp.width, bmp.height);
+  if (bmp.width * bmp.height > MAX_PIXELS) {
+    bmp.close();
+    throw new Error("Imagem grande demais (máx. 100 megapixels).");
+  }
+  const { width, height } = fitWithin(bmp.width, bmp.height, maxSide);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;

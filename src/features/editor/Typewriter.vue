@@ -5,6 +5,7 @@ import { countWords } from "../../lib/wordcount";
 import { editorOptions } from "./editorConfig";
 import { Figure, insertFigure } from "./figure";
 import FigureView from "./FigureView.vue";
+import { pastedImages } from "./imageFile";
 import { playKey } from "./keySound";
 
 const props = defineProps<{ sceneId: string; contentJson: string; focusMode: boolean; keySound: boolean; chapterTitle: string; sceneTitle: string; words: number }>();
@@ -40,7 +41,7 @@ const editor = useEditor({
   ...editorOptions({ figure: Figure.extend({ addNodeView: () => VueNodeViewRenderer(FigureView) }) }),
   editorProps: {
     handlePaste: (_view, e) => {
-      const files = imagesIn(e.clipboardData?.files);
+      const files = pastedImages([...(e.clipboardData?.files ?? [])], e.clipboardData?.types ?? []);
       if (!files.length) return false;
       emit("imageFiles", files);
       return true;

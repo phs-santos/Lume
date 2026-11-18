@@ -1,15 +1,18 @@
 // @vitest-environment happy-dom
 import { Editor } from "@tiptap/core";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { editorOptions } from "./editorConfig";
 import { insertFigure } from "./figure";
 
+const editors: Editor[] = [];
+afterEach(() => editors.splice(0).forEach((e) => e.destroy()));
+const track = (e: Editor) => (editors.push(e), e);
 const make = () =>
-  new Editor({
+  track(new Editor({
     ...editorOptions(),
     element: document.createElement("div"),
     content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Antes depois" }] }] },
-  });
+  }));
 
 describe("imagem no texto", () => {
   it("inserida no meio de um parágrafo divide o parágrafo e não perde texto", () => {
@@ -30,11 +33,11 @@ describe("imagem no texto", () => {
   });
 
   it("figura vinda de um documento salvo é lida de volta", () => {
-    const e = new Editor({
+    const e = track(new Editor({
       ...editorOptions(),
       element: document.createElement("div"),
       content: { type: "doc", content: [{ type: "figure", attrs: { src: "lume-img:x", caption: "Mapa da serra" } }] },
-    });
+    }));
     expect(e.getJSON().content![0]).toMatchObject({ type: "figure", attrs: { src: "lume-img:x", caption: "Mapa da serra" } });
   });
 });

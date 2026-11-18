@@ -9,7 +9,11 @@ const emit = defineEmits<{ done: []; back: [] }>();
 // outro usuário já existe neste computador: dá para voltar sem criar cofre
 const canGoBack = ref(false);
 onMounted(async () => {
-  canGoBack.value = (await profilesList().catch(() => [])).length > 0;
+  try {
+    canGoBack.value = (await profilesList()).length > 0;
+  } catch {
+    canGoBack.value = false; // sem lista de usuários: só não mostra o "Voltar"
+  }
 });
 const nickname = ref("");
 const password = ref("");

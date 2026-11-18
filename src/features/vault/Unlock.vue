@@ -17,7 +17,11 @@ const choosing = ref(false);
 
 async function load() {
   nickname.value = await vaultNickname().catch(() => null);
-  profiles.value = await profilesList().catch(() => []);
+  try {
+    profiles.value = await profilesList();
+  } catch {
+    profiles.value = [];
+  }
 }
 
 /** Troca de usuário: o cofre de cada um tem a própria senha. */

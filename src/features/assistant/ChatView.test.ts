@@ -22,10 +22,10 @@ import * as api from "../../lib/api";
 import ChatView from "./ChatView.vue";
 
 let app: App | null = null;
-async function mount(mode = "conselheira") {
+async function mount(mode = "conselheira", draft?: string) {
   const el = document.createElement("div");
   document.body.appendChild(el);
-  app = createApp(ChatView, { bookId: "b", sceneId: "s1", mode });
+  app = createApp(ChatView, { bookId: "b", sceneId: "s1", mode, draft });
   app.mount(el);
   await flush();
   return el;
@@ -152,5 +152,11 @@ describe("ChatView", () => {
     await flush();
     expect(api.aiConversationOpen).toHaveBeenCalledWith("cv");
     expect(bubbles(el)).toEqual(["antiga"]);
+  });
+
+  it("rascunho vindo de uma ideia preenche o campo sem enviar", async () => {
+    const el = await mount("conselheira", "Sobre esta ideia: «Marina foge.»\n\n");
+    expect((el.querySelector("textarea") as HTMLTextAreaElement).value).toBe("Sobre esta ideia: «Marina foge.»\n\n");
+    expect(api.aiSend).not.toHaveBeenCalled();
   });
 });

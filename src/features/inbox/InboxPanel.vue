@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { IconArchive, IconArrowBackUp, IconPlugConnectedX, IconFilePlus, IconMicrophone, IconPencil, IconPlayerPlay, IconRefresh, IconTrash, IconX } from "@tabler/icons-vue";
+import { IconArchive, IconArrowBackUp, IconMessageCircle, IconPlugConnectedX, IconFilePlus, IconRowInsertBottom, IconMicrophone, IconPencil, IconPlayerPlay, IconRefresh, IconTrash, IconX } from "@tabler/icons-vue";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { inboxArchive, inboxBody, inboxDelete, inboxList, inboxRestore, inboxToScene, remoteDisconnect, remoteStatus, remoteSync } from "../../lib/api";
+import { inboxArchive, inboxBody, inboxDelete, inboxList, inboxRestore, inboxRetryTranscript, inboxToScene, inboxTranscribePending, remoteDisconnect, remoteStatus, remoteSync } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 import type { InboxItem, RemoteStatus, SceneSummary } from "../../lib/types";
 import { audioBlob } from "./audioUrl";
 import ConnectPhone from "./ConnectPhone.vue";
+import { aboutIdea, ideaText, transcriptLabel } from "./ideaText";
 
 const props = defineProps<{ current: SceneSummary | null; fallbackChapterId: string | null }>();
-const emit = defineEmits<{ close: []; sceneCreated: [id: string]; changed: [] }>();
+const emit = defineEmits<{ close: []; sceneCreated: [id: string]; changed: []; insertText: [text: string]; discuss: [text: string] }>();
 
 const status = ref<RemoteStatus | null>(null);
 const items = ref<InboxItem[]>([]);
@@ -17,6 +18,7 @@ const busy = ref(false);
 const message = ref("");
 const audio = ref<Record<string, string>>({});
 const confirming = ref<string | null>(null);
+const expanded = ref<Record<string, boolean>>({});
 
 const shown = computed(() => items.value.filter((i) => i.status === tab.value));
 const counts = computed(() => ({
@@ -45,6 +47,23 @@ async function fetchNow() {
     busy.value = false;
     await load();
   }
+  await transcribe();
+}
+
+/** Transcreve os áudios que chegaram (em segundo plano) e atualiza os cartões. */
+async function transcribe() {
+  if (!items.value.some((i) => i.kind === "audio" && (i.transcript_status === "pendente" || i.transcript_status === null))) return;
+  try {
+    await inboxTranscribePending();
+  } catch (e) {
+    message.value = errorMessage(e);
+  }
+  await load();
+}
+
+async function retry(i: InboxItem) {
+  await act(() => inboxRetryTranscript(i.id));
+  await transcribe();
 }
 
 async function disconnect() {
@@ -119,13 +138,24 @@ onBeforeUnmount(() => Object.values(audio.value).forEach(URL.revokeObjectURL));
             <IconPencil v-else :size="16" />
             <span>{{ when(i.created_at) }}</span>
           </div>
-          <p v-if="i.kind === 'text'" class="text">{{ i.text }}</p>
-          <template v-else>
+          <template v-if="i.kind === 'audio'">
             <audio v-if="audio[i.id]" :src="audio[i.id]" controls autoplay class="player" />
             <button v-else class="btn quiet play" @click="play(i)"><IconPlayerPlay :size="16" /> Ouvir</button>
           </template>
+          <p v-if="ideaText(i)" :class="['text', { clamp: !expanded[i.id] }]">{{ ideaText(i) }}</p>
+          <button v-if="(ideaText(i)?.length ?? 0) > 320" class="link more" @click="expanded[i.id] = !expanded[i.id]">
+            {{ expanded[i.id] ? "Ver menos" : "Ver tudo" }}
+          </button>
+          <p v-if="transcriptLabel(i)" :class="['state', i.transcript_status]">
+            {{ transcriptLabel(i) }}
+            <button v-if="i.transcript_status === 'erro'" class="link" @click="retry(i)">Tentar de novo</button>
+          </p>
           <div class="actions">
-            <button v-if="i.kind === 'text' && i.status === 'nova'" class="link" @click="toScene(i)"><IconFilePlus :size="16" /> Virar cena aqui</button>
+            <template v-if="ideaText(i) && i.status === 'nova'">
+              <button class="link" @click="toScene(i)"><IconFilePlus :size="16" /> Virar cena aqui</button>
+              <button class="link" @click="emit('insertText', ideaText(i)!)"><IconRowInsertBottom :size="16" /> Inserir no fim da cena</button>
+              <button class="link" @click="emit('discuss', aboutIdea(ideaText(i)!))"><IconMessageCircle :size="16" /> Conversar sobre isso</button>
+            </template>
             <button v-if="i.status === 'nova'" class="link" @click="act(() => inboxArchive(i.id))"><IconArchive :size="16" /> Arquivar</button>
             <button v-else class="link" @click="act(() => inboxRestore(i.id))"><IconArrowBackUp :size="16" /> Voltar para novas</button>
             <template v-if="confirming === i.id">
@@ -174,6 +204,10 @@ h2 { flex: 1; margin: 0; font: 400 1.4rem var(--font-mono); }
 .meta { display: flex; gap: 0.4rem; align-items: center; color: var(--note); font-size: 0.78rem; margin-bottom: 0.4rem; }
 .text { margin: 0 0 0.5rem; font: 1rem/1.55 var(--font-serif); white-space: pre-wrap; }
 .player { width: 100%; margin-bottom: 0.25rem; }
+.text.clamp { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.more { margin: -0.25rem 0 0.4rem -0.5rem; font-size: 0.8rem; }
+.state { display: flex; align-items: center; flex-wrap: wrap; gap: 0.25rem; margin: 0.2rem 0 0.5rem; font-size: 0.82rem; color: var(--note); font-style: italic; }
+.state.erro { color: var(--ribbon); font-style: normal; }
 .play { margin-bottom: 0.25rem; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.1rem; margin: 0 -0.5rem; font-size: 0.82rem; }
 .ask { color: var(--ribbon); padding: 0 0.4rem; }

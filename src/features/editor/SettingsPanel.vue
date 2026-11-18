@@ -52,9 +52,16 @@ async function saveModels() {
 }
 
 /** "50 mil tokens", "1,2 mi tokens". */
+/** A transcrição guarda milissegundos de áudio no lugar dos tokens: fica fora da soma. */
+const STT_MODEL = "inworld/inworld-stt-1";
+const llmUsage = computed(() => usage.value.filter((u) => u.model !== STT_MODEL));
+const sttMinutes = computed(() =>
+  Math.round(usage.value.filter((u) => u.model === STT_MODEL).reduce((t, u) => t + u.input_tokens, 0) / 60_000),
+);
+
 const usageText = computed(() => {
-  const n = usage.value.reduce((t, u) => t + u.input_tokens + u.output_tokens, 0);
-  const cost = usage.value.reduce((t, u) => t + (u.cost ?? 0), 0);
+  const n = llmUsage.value.reduce((t, u) => t + u.input_tokens + u.output_tokens, 0);
+  const cost = llmUsage.value.reduce((t, u) => t + (u.cost ?? 0), 0);
   const tokens = n < 1000 ? `${n} tokens` : n < 1e6 ? `${Math.round(n / 1000)} mil tokens` : `${(n / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mi tokens`;
   return cost > 0 ? `${tokens} · ~US$ ${cost.toFixed(2)}` : tokens;
 });
@@ -104,6 +111,7 @@ const usageText = computed(() => {
       </label>
       <datalist id="ai-models"><option v-for="m in MODELS" :key="m" :value="m" /></datalist>
       <p class="usage">Este mês: {{ usageText }}</p>
+      <p v-if="sttMinutes > 0" class="usage">{{ sttMinutes }} min de transcrição este mês</p>
       <p v-if="aiError" class="err" role="alert">{{ aiError }}</p>
     </section>
     <button class="link" @click="emit('close')">Fechar</button>

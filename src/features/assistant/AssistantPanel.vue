@@ -6,7 +6,7 @@ import type { Proposal } from "../../lib/types";
 import BibleView from "./BibleView.vue";
 import ChatView from "./ChatView.vue";
 
-const props = defineProps<{ bookId: string; sceneId: string | null; mode: string; sceneTitles: Record<string, string> }>();
+const props = defineProps<{ bookId: string; sceneId: string | null; mode: string; sceneTitles: Record<string, string>; draft?: string }>();
 const emit = defineEmits<{
   close: [];
   openScene: [id: string];
@@ -70,6 +70,7 @@ function cancelReading() {
       :book-id="bookId"
       :scene-id="sceneId"
       :mode="mode"
+      :draft="draft"
       @insert-proposal="emit('insertProposal', $event)"
       @proposal-as-scene="emit('proposalAsScene', $event)"
       @discard-proposal="emit('discardProposal', $event)"

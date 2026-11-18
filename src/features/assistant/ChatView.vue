@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from "vue";
+import { nextTick, onMounted, ref, watch } from "vue";
 import { IconArrowUp, IconHistory, IconPlus, IconRefresh, IconSearch } from "@tabler/icons-vue";
 import {
   aiConversation, aiConversationNew, aiConversationOpen, aiConversations, aiKeySet, aiKeyStatus, aiRetry, aiSend, proposalsPending,
@@ -7,7 +7,7 @@ import {
 import { errorMessage } from "../../lib/errors";
 import type { ChatEvent, Conversation, Proposal } from "../../lib/types";
 
-const props = defineProps<{ bookId: string; sceneId: string | null; mode: string }>();
+const props = defineProps<{ bookId: string; sceneId: string | null; mode: string; draft?: string }>();
 const emit = defineEmits<{ insertProposal: [p: Proposal]; proposalAsScene: [p: Proposal]; discardProposal: [p: Proposal] }>();
 
 type Item =
@@ -18,7 +18,14 @@ type Item =
 const hasKey = ref<boolean | null>(null);
 const keyDraft = ref("");
 const items = ref<Item[]>([]);
-const draft = ref("");
+const draft = ref(props.draft ?? "");
+// rascunho vindo de fora (ex.: "Conversar sobre esta ideia"): preenche o campo, não envia
+watch(
+  () => props.draft,
+  (d) => {
+    if (d) draft.value = d;
+  },
+);
 const busy = ref(false);
 const error = ref("");
 const showHistory = ref(false);

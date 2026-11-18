@@ -7,7 +7,7 @@ import { toDocx } from "../../lib/export/docx";
 import { toMarkdown } from "../../lib/export/markdown";
 import type { ExportBook } from "../../lib/export/types";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
-import { aiSceneTouched, proposalSetStatus, bookOutline, chapterCreate, inboxList, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRestore, sceneSave, sceneVersions, settingGet, settingSet } from "../../lib/api";
+import { aiSceneTouched, proposalSetStatus, bookOutline, chapterCreate, inboxList, inboxTranscribePending, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRestore, sceneSave, sceneVersions, settingGet, settingSet } from "../../lib/api";
 import AssistantPanel from "../assistant/AssistantPanel.vue";
 import { errorMessage } from "../../lib/errors";
 import { countWords } from "../../lib/wordcount";
@@ -195,6 +195,7 @@ async function refreshIdeas() {
 async function backgroundSync() {
   try {
     if ((await remoteStatus()).connected) await remoteSync();
+    await inboxTranscribePending();
   } catch {
     /* sem rede: tenta de novo no próximo ciclo */
   }
@@ -206,6 +207,23 @@ const currentChapterTitle = computed(
 );
 
 const typewriter = ref<{ insertAtEnd: (t: string) => boolean } | null>(null);
+
+/** Ideia do celular entra no fim da cena aberta, pelo editor (um ⌘Z desfaz). */
+function insertIdea(text: string) {
+  if (!scene.value || !typewriter.value?.insertAtEnd(text)) {
+    error.value = "Abra uma cena para inserir a ideia.";
+  }
+}
+
+/** "Conversar sobre isso": abre o Assistente com a ideia já escrita no campo, sem enviar. */
+const assistantDraft = ref("");
+async function discussIdea(text: string) {
+  panel.value = "none";
+  if (!assistant.value) await toggleAssistant();
+  assistantDraft.value = "";
+  await nextTick();
+  assistantDraft.value = text;
+}
 
 /** Proposta aprovada: entra pelo editor aberto (um ⌘Z desfaz), e o autosave grava. */
 async function insertProposal(p: Proposal) {
@@ -392,6 +410,8 @@ onBeforeUnmount(() => {
         @close="panel = 'none'"
         @scene-created="onIdeaScene"
         @changed="refreshIdeas"
+        @insert-text="insertIdea"
+        @discuss="discussIdea"
       />
 
       <aside v-if="panel === 'export'" class="versions" aria-label="Exportar o livro">
@@ -422,6 +442,7 @@ onBeforeUnmount(() => {
       :scene-id="scene?.id ?? null"
       :mode="outline.book.ai_mode"
       :scene-titles="sceneTitles"
+      :draft="assistantDraft"
       @close="toggleAssistant"
       @open-scene="openScene"
       @insert-proposal="insertProposal"

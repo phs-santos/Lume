@@ -49,4 +49,14 @@ describe("Ajustes de IA", () => {
     const el = await mount();
     expect(el.textContent).toContain("50 mil tokens");
   });
+
+  it("transcrição aparece em minutos e não entra na soma de tokens", async () => {
+    vi.mocked(api.aiUsage).mockResolvedValueOnce([
+      { month: "2026-11", model: "m", input_tokens: 48200, output_tokens: 1800, cost: null },
+      { month: "2026-11", model: "inworld/inworld-stt-1", input_tokens: 90_000, output_tokens: 0, cost: null },
+    ]);
+    const el = await mount();
+    expect(el.textContent).toContain("50 mil tokens");
+    expect(el.textContent).toContain("2 min de transcrição este mês");
+  });
 });

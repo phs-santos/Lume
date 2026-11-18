@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { IconChevronDown, IconX } from "@tabler/icons-vue";
+import { onClickOutside } from "../../lib/clickOutside";
 import { aiEnable, aiFirstPass, aiFirstPassCancel, aiKeyStatus, aiPendingCount, settingGet, settingSet } from "../../lib/api";
 import type { AiMode, Proposal } from "../../lib/types";
 import BibleView from "./BibleView.vue";
@@ -22,6 +23,8 @@ const MODES: { id: AiMode; name: string; desc: string }[] = [
   { id: "coautora", name: "Coautora", desc: "Também propõe trechos, que só entram se você aprovar." },
 ];
 const modeMenu = ref(false);
+const modeBox = ref<HTMLElement | null>(null);
+const stopModeOutside = onClickOutside(() => modeMenu.value, () => [modeBox.value], () => (modeMenu.value = false));
 const modeName = () => MODES.find((m) => m.id === props.mode)?.name ?? props.mode;
 function chooseMode(m: AiMode) {
   modeMenu.value = false;
@@ -110,6 +113,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  stopModeOutside();
   if (reading.value) void aiFirstPassCancel();
 });
 
@@ -126,7 +130,7 @@ function cancelReading() {
         <button role="tab" :aria-selected="tab === 'chat'" @click="tab = 'chat'">Conversa</button>
         <button role="tab" :aria-selected="tab === 'bible'" @click="tab = 'bible'">Bíblia</button>
       </div>
-      <div class="mode">
+      <div ref="modeBox" class="mode">
         <button class="mode-btn" data-test="mode" :aria-expanded="modeMenu" title="Modo da IA neste livro" @click="modeMenu = !modeMenu">
           {{ modeName() }} <IconChevronDown :size="12" stroke-width="2.25" />
         </button>

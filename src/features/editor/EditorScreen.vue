@@ -18,6 +18,7 @@ import SettingsPanel from "./SettingsPanel.vue";
 import Typewriter from "./Typewriter.vue";
 import { loadPrefs, prefs, setPref } from "./settings";
 import ShortcutsHelp from "./ShortcutsHelp.vue";
+import { onClickOutside } from "../../lib/clickOutside";
 import InboxPanel from "../inbox/InboxPanel.vue";
 import { isMac, label, matchShortcut, SHORTCUTS, type Action } from "./shortcuts";
 import { useAutosave } from "./useAutosave";
@@ -362,6 +363,13 @@ const when = (t: number) =>
   new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
 let unlistenClose: (() => void) | null = null;
+/** Painéis que abrem por cima da folha: fecham com clique fora ou Esc. */
+const POPOVERS = ["ideas", "versions", "export", "settings"];
+const stopClickOutside = onClickOutside(
+  () => POPOVERS.includes(panel.value),
+  () => [...document.querySelectorAll("[data-popover]"), document.querySelector("nav.tools")],
+  () => (panel.value = "none"),
+);
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 const unregisterFlusher = registerFlusher(flushSafely);
 const flushOnBlur = () => void flushSafely();
@@ -394,6 +402,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("blur", flushOnBlur);
   unlistenClose?.();
   unregisterFlusher();
+  stopClickOutside();
   if (syncTimer) clearInterval(syncTimer);
   if (idleTimer) clearTimeout(idleTimer);
   if (scene.value) touchScene(scene.value.id);
@@ -469,7 +478,7 @@ onBeforeUnmount(() => {
         @discuss="discussIdea"
       />
 
-      <aside v-if="panel === 'export'" class="versions" aria-label="Exportar o livro">
+      <aside v-if="panel === 'export'" class="versions" data-popover aria-label="Exportar o livro">
         <div class="seg export-scope" role="radiogroup" aria-label="O que exportar">
           <button role="radio" :aria-checked="exportScope === 'book'" @click="exportScope = 'book'">Livro inteiro</button>
           <button role="radio" :aria-checked="exportScope === 'scene'" :disabled="!scene" @click="exportScope = 'scene'">Só esta cena</button>
@@ -484,7 +493,7 @@ onBeforeUnmount(() => {
         <p v-if="exportMsg" class="hint export-msg">{{ exportMsg }}</p>
       </aside>
 
-      <aside v-if="panel === 'versions'" class="versions" aria-label="Versões da cena">
+      <aside v-if="panel === 'versions'" class="versions" data-popover aria-label="Versões da cena">
         <p v-if="!versions.length" class="hint">Ainda não há versões salvas desta cena.</p>
         <ol v-else>
           <li v-for="v in versions" :key="v.id">

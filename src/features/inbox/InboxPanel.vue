@@ -120,7 +120,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside class="drawer" aria-label="Ideias do celular">
+  <aside class="drawer" data-popover aria-label="Ideias do celular">
     <header>
       <h2>Ideias</h2>
       <button v-if="status?.connected" class="link icon" :disabled="busy" title="Buscar agora" aria-label="Buscar ideias agora" @click="fetchNow">

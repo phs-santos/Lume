@@ -95,7 +95,7 @@ const usageText = computed(() => {
 </script>
 
 <template>
-  <aside class="panel" aria-label="Ajustes">
+  <aside class="panel" data-popover aria-label="Ajustes">
     <div class="row">
       <span>Letra</span>
       <div class="seg">

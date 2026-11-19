@@ -23,7 +23,11 @@ async function edit() {
   draft.value = card.value.text;
   editing.value = true;
   await nextTick();
-  box.value?.focus();
+  // o Vue Flow deixa o cartão invisível até medir o tamanho; tenta de novo nos próximos quadros
+  for (let i = 0; i < 20 && box.value && document.activeElement !== box.value; i++) {
+    box.value.focus();
+    if (document.activeElement !== box.value) await new Promise((r) => requestAnimationFrame(r));
+  }
   box.value?.select();
 }
 defineExpose({ edit });
@@ -47,7 +51,7 @@ const bibleKinds: BibleEntry["kind"][] = ["personagem", "lugar", "fato"];
 
 <template>
   <div :class="['card', `c-${card.color}`, { editing }]" @dblclick.stop="edit">
-    <Handle type="target" :position="Position.Top" class="dot" />
+    <Handle type="target" :position="Position.Left" class="dot" />
     <span v-if="kind" class="badge">{{ KIND_NAMES[kind] ?? kind }}</span>
     <button class="more nodrag" title="Opções do cartão" aria-label="Opções do cartão" @click.stop="menu = !menu" @dblclick.stop>
       <IconDots :size="15" stroke-width="2" />
@@ -79,7 +83,7 @@ const bibleKinds: BibleEntry["kind"][] = ["personagem", "lugar", "fato"];
       </button>
       <button class="menu-item danger" role="menuitem" @click="pick(() => actions.remove(id))">Apagar cartão</button>
     </div>
-    <Handle type="source" :position="Position.Bottom" class="dot" />
+    <Handle type="source" :position="Position.Right" class="dot" />
   </div>
 </template>
 
@@ -141,8 +145,6 @@ textarea.text {
 }
 .card:hover .more, .more:focus-visible, .card:has(.menu) .more { opacity: 1; }
 .more:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
-.dot { width: 9px; height: 9px; border: 2px solid var(--sheet); background: var(--note); }
-.card:hover .dot { background: var(--ribbon); }
 .menu {
   position: absolute;
   top: 2rem;

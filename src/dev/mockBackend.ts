@@ -198,7 +198,7 @@ Object.assign(handlers, {
   ai_scene_touched: () => undefined,
   ai_first_pass: async ({ onProgress }: any) => { for (let i = 0; i <= 3; i++) { send(onProgress, { done: i, total: 3 }); await new Promise((r) => setTimeout(r, 300)); } mockRead = true; },
   ai_first_pass_cancel: () => undefined,
-  ai_pending_count: () => (mockRead ? 0 : 3),
+  ai_pending_count: ({ bookId }: any) => (mockRead ? 0 : chaptersOf(bookId).flatMap((c: any) => scenesOf(c.id)).filter((s: any) => s.word_count > 0).length),
   bible_list: ({ bookId }: any) => ai.bible.filter((e) => e.book_id === bookId),
   bible_update: ({ id: eid, name, aliases, body, storyOrder }: any) => Object.assign(ai.bible.find((e) => e.id === eid)!, { name, aliases, body, story_order: storyOrder, edited_by_user: true }),
   bible_absorb_note: ({ id: eid, index }: any) => { const e = ai.bible.find((x) => x.id === eid)!; const [n] = e.ai_notes.splice(index, 1); e.body += "\n" + n.fact; return e; },
@@ -244,10 +244,10 @@ Object.assign(handlers, {
     p.status = "aceita";
     if (p.kind === "nome") { handlers.book_rename({ id: p.book_id, title: pl.nome }); return []; }
     const mine = map.cards.filter((c) => c.book_id === p.book_id);
-    const ox = mine.length ? Math.max(...mine.map((c) => c.x)) + 320 : 0, oy = mine.length ? Math.min(...mine.map((c) => c.y)) : 0;
+    const ox = mine.length ? Math.max(...mine.map((c) => c.x)) + 380 : 0, oy = mine.length ? Math.min(...mine.map((c) => c.y)) : 0;
     const byRef: Record<string, string> = {};
     const made = pl.cartoes.filter((k: any) => refs.includes(k.ref)).map((k: any, i: number) => {
-      const c = handlers.map_card_create({ bookId: p.book_id, text: k.texto, color: "papel", x: ox + (i % 3) * 280, y: oy + Math.floor(i / 3) * 180 });
+      const c = handlers.map_card_create({ bookId: p.book_id, text: k.texto, color: "papel", x: ox + (i % 2) * 340, y: oy + Math.floor(i / 2) * 200 });
       byRef[k.ref] = c.id; return c;
     });
     const has = (x: string) => byRef[x] ?? (map.cards.some((c) => c.id === x) ? x : null);

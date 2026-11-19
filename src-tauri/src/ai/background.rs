@@ -99,6 +99,10 @@ pub fn pending_scenes(c: &Connection, book_id: &str) -> Result<Vec<String>, DbEr
     for ch in books::book_outline(c, book_id)?.chapters {
         for sc in ch.scenes {
             let s = scenes::scene_get(c, &sc.id)?;
+            // cena vazia não tem o que ler (livro recém-criado não pede leitura)
+            if plain_text(&s.content_json).trim().is_empty() {
+                continue;
+            }
             let h = content_hash(&s.content_json);
             if ai::digest_get(c, &sc.id)?.map(|d| d.0) != Some(h) {
                 out.push(sc.id);
@@ -183,6 +187,13 @@ mod tests {
         digest_scene(&db, &m, &s.id, &now).unwrap();
         assert_eq!(m.n_calls(), 0);
         assert!(pending_scenes(db.lock().unwrap().as_ref().unwrap(), &b.id).unwrap().iter().all(|id| *id != s.id));
+    }
+
+    #[test]
+    fn new_empty_scene_is_not_pending() {
+        let (_d, c) = test_conn();
+        let b = crate::db::books::book_create(&c, "", "conselheira", 0).unwrap();
+        assert!(pending_scenes(&c, &b.id).unwrap().is_empty(), "nada para ler num livro recém-criado");
     }
 
     #[test]

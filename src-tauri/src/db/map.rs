@@ -255,7 +255,7 @@ pub fn proposals_pending(c: &Connection, book_id: &str) -> Result<Vec<MapProposa
     Ok(v)
 }
 
-/// Aceita a proposta. Cartões: cria os `refs` escolhidos em grade à direita do mapa e as setas
+/// Aceita a proposta. Cartões: cria os `refs` escolhidos em grade de 2 colunas à direita do mapa e as setas
 /// cujos dois lados existem. Nome: renomeia o livro (deixa de ser provisório).
 pub fn proposal_accept(c: &Connection, id: &str, refs: &[String], now: i64) -> Result<Vec<MapCard>, DbError> {
     let p = proposal_get(c, id)?;
@@ -273,14 +273,14 @@ pub fn proposal_accept(c: &Connection, id: &str, refs: &[String], now: i64) -> R
             return Err(invalid("escolha ao menos um cartão"));
         }
         let (ox, oy): (f64, f64) = c.query_row(
-            "SELECT COALESCE(MAX(x) + 320, 0), COALESCE(MIN(y), 0) FROM map_cards WHERE book_id=?1",
+            "SELECT COALESCE(MAX(x) + 380, 0), COALESCE(MIN(y), 0) FROM map_cards WHERE book_id=?1",
             [&p.book_id],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
         let mut by_ref = std::collections::HashMap::new();
         for (i, k) in chosen.iter().enumerate() {
-            let (col, row) = ((i % 3) as f64, (i / 3) as f64);
-            let card = card_create(c, &p.book_id, str_of(k, "texto"), COLORS[0], ox + col * 280.0, oy + row * 180.0, now)?;
+            let (col, row) = ((i % 2) as f64, (i / 2) as f64);
+            let card = card_create(c, &p.book_id, str_of(k, "texto"), COLORS[0], ox + col * 340.0, oy + row * 200.0, now)?;
             by_ref.insert(str_of(k, "ref").to_string(), card.id.clone());
             out.push(card);
         }
@@ -426,7 +426,7 @@ mod tests {
         let p = proposal_add_cards(&c, &b, None, &cards_payload(&[("a", "1"), ("b", "2"), ("c", "3"), ("d", "4")], &[]), 2).unwrap();
         let got = proposal_accept(&c, &p.id, &["a".into(), "b".into(), "c".into(), "d".into()], 3).unwrap();
         let pos: Vec<(f64, f64)> = got.iter().map(|k| (k.x, k.y)).collect();
-        assert_eq!(pos, vec![(420.0, 50.0), (700.0, 50.0), (980.0, 50.0), (420.0, 230.0)]);
+        assert_eq!(pos, vec![(480.0, 50.0), (820.0, 50.0), (480.0, 250.0), (820.0, 250.0)]);
         assert_eq!(got[0].text, "1");
     }
 

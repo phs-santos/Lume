@@ -232,6 +232,8 @@ defineExpose({ reload, focusCards });
 .map :deep(.vue-flow__connection-path) { stroke: var(--ribbon); stroke-width: 1.5; }
 .map :deep(.vue-flow__selection) { background: color-mix(in srgb, var(--ribbon) 8%, transparent); border: 1px dashed var(--ribbon); }
 .map :deep(.vue-flow__node) { cursor: grab; }
+.map :deep(.vue-flow__handle) { width: 11px; height: 11px; border: 2px solid var(--sheet); border-radius: 50%; background: var(--note); }
+.map :deep(.vue-flow__node:hover .vue-flow__handle), .map :deep(.vue-flow__handle.connecting) { background: var(--ribbon); }
 
 .tools { position: absolute; top: 0.9rem; left: 0.9rem; display: flex; gap: 0.4rem; z-index: 5; }
 .tool {

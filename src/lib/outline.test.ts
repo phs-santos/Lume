@@ -4,7 +4,7 @@ import type { Outline } from "./types";
 
 const scene = (id: string, chapter_id: string, position: number) => ({ id, chapter_id, title: id, word_count: 0, position });
 const outline: Outline = {
-  book: { id: "b", title: "L", ai_mode: "conselheira", created_at: 0 },
+  book: { id: "b", title: "L", ai_mode: "conselheira", created_at: 0, title_provisional: false },
   chapters: [
     { chapter: { id: "c1", book_id: "b", title: "1", position: 0 }, scenes: [scene("A", "c1", 0), scene("B", "c1", 1), scene("C", "c1", 2)] },
     { chapter: { id: "c2", book_id: "b", title: "2", position: 1 }, scenes: [scene("D", "c2", 0)] },

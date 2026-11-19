@@ -104,6 +104,16 @@ pub fn run() {
             commands::bible_delete,
             commands::proposal_set_status,
             commands::proposals_pending,
+            commands::ai_conversation_new_idea,
+            commands::map_get,
+            commands::map_card_create,
+            commands::map_card_update,
+            commands::map_card_move,
+            commands::map_card_delete,
+            commands::map_link_create,
+            commands::map_link_label,
+            commands::map_link_delete,
+            commands::map_card_to_bible,
             exit_app,
         ])
         .build(tauri::generate_context!())

@@ -433,6 +433,20 @@ db_cmd!(bible_absorb_note(id: String, index: usize) -> BibleEntry => |c| aidb::b
 db_cmd!(bible_delete(id: String) -> () => |c| aidb::bible_delete(c, &id));
 db_cmd!(proposal_set_status(id: String, status: String) -> () => |c| aidb::proposal_set_status(c, &id, &status));
 db_cmd!(proposals_pending(book_id: String) -> Vec<Proposal> => |c| aidb::proposals_pending(c, &book_id));
+db_cmd!(ai_conversation_new_idea(book_id: String) -> ConversationView => |c| { let cv = aidb::conversation_new_idea(c, &book_id, now_ms())?; conversation_view(c, cv) });
+
+// ---------- mapa de ideias ----------
+use crate::db::map::{self as mapdb, MapCard, MapData, MapLink};
+
+db_cmd!(map_get(book_id: String) -> MapData => |c| mapdb::map_get(c, &book_id));
+db_cmd!(map_card_create(book_id: String, text: String, color: String, x: f64, y: f64) -> MapCard => |c| mapdb::card_create(c, &book_id, &text, &color, x, y, now_ms()));
+db_cmd!(map_card_update(id: String, text: String, color: String) -> MapCard => |c| mapdb::card_update(c, &id, &text, &color, now_ms()));
+db_cmd!(map_card_move(id: String, x: f64, y: f64) -> () => |c| mapdb::card_move(c, &id, x, y, now_ms()));
+db_cmd!(map_card_delete(id: String) -> () => |c| mapdb::card_delete(c, &id));
+db_cmd!(map_link_create(book_id: String, from: String, to: String) -> MapLink => |c| mapdb::link_create(c, &book_id, &from, &to));
+db_cmd!(map_link_label(id: String, label: String) -> () => |c| mapdb::link_set_label(c, &id, &label));
+db_cmd!(map_link_delete(id: String) -> () => |c| mapdb::link_delete(c, &id));
+db_cmd!(map_card_to_bible(id: String, kind: String) -> BibleEntry => |c| mapdb::card_to_bible(c, &id, &kind, now_ms()));
 
 /// Envia uma mensagem e transmite a resposta pelo canal.
 #[tauri::command]

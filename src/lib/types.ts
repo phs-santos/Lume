@@ -17,7 +17,7 @@ export type ErrorCode =
   | "KEY_MISMATCH"
   | "NOT_TEXT";
 
-export interface Book { id: string; title: string; ai_mode: AiMode; created_at: number }
+export interface Book { id: string; title: string; ai_mode: AiMode; created_at: number; title_provisional: boolean }
 export interface Chapter { id: string; book_id: string; title: string; position: number }
 export interface SceneSummary { id: string; chapter_id: string; title: string; word_count: number; position: number }
 export interface ChapterOutline { chapter: Chapter; scenes: SceneSummary[] }
@@ -46,7 +46,7 @@ export interface BibleEntry {
 }
 export interface Conversation {
   id: string; book_id: string; title: string; rolling_summary: string; folded_count: number;
-  closed: boolean; created_at: number; updated_at: number;
+  closed: boolean; created_at: number; updated_at: number; purpose: "livro" | "ideia";
 }
 export interface AiMessage { id: string; conversation_id: string; role: "user" | "assistant" | "note"; content: string; tool_name: string | null; created_at: number }
 export interface ConversationView { conversation: Conversation; messages: AiMessage[] }
@@ -68,3 +68,12 @@ export interface BookMeta {
   author: string | null; synopsis: string | null; dedication: string | null;
   cover_image_id: string | null; back_image_id: string | null;
 }
+
+export type CardColor = "papel" | "amarelo" | "verde" | "azul" | "rosa";
+export const CARD_COLORS: CardColor[] = ["papel", "amarelo", "verde", "azul", "rosa"];
+export interface MapCard {
+  id: string; book_id: string; text: string; color: CardColor; x: number; y: number;
+  bible_entry_id: string | null; created_at: number; updated_at: number;
+}
+export interface MapLink { id: string; book_id: string; from_card: string; to_card: string; label: string }
+export interface MapData { cards: MapCard[]; links: MapLink[] }

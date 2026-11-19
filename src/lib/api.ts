@@ -1,5 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
-import type { AiModels, BibleEntry, ChatEvent, Conversation, ConversationView, Progress, Proposal, UsageRow } from "./types";
+import type { AiModels, BibleEntry, CardColor, ChatEvent, Conversation, ConversationView, MapCard, MapData, MapLink, Progress, Proposal, UsageRow } from "./types";
 import type { AiMode, Book, BookMeta, InboxItem, RemoteStatus, Chapter, Outline, Scene, Version, VaultStatus } from "./types";
 
 export interface Profile { id: string; nickname: string; active: boolean }
@@ -93,6 +93,19 @@ export const bibleAbsorbNote = (id: string, index: number) => invoke<BibleEntry>
 export const bibleDelete = (id: string) => invoke<void>("bible_delete", { id });
 export const proposalSetStatus = (id: string, status: Proposal["status"]) => invoke<void>("proposal_set_status", { id, status });
 export const proposalsPending = (bookId: string) => invoke<Proposal[]>("proposals_pending", { bookId });
+export const aiConversationNewIdea = (bookId: string) => invoke<ConversationView>("ai_conversation_new_idea", { bookId });
+
+// ---------- mapa de ideias ----------
+export const mapGet = (bookId: string) => invoke<MapData>("map_get", { bookId });
+export const mapCardCreate = (bookId: string, text: string, color: CardColor, x: number, y: number) =>
+  invoke<MapCard>("map_card_create", { bookId, text, color, x, y });
+export const mapCardUpdate = (id: string, text: string, color: CardColor) => invoke<MapCard>("map_card_update", { id, text, color });
+export const mapCardMove = (id: string, x: number, y: number) => invoke<void>("map_card_move", { id, x, y });
+export const mapCardDelete = (id: string) => invoke<void>("map_card_delete", { id });
+export const mapLinkCreate = (bookId: string, from: string, to: string) => invoke<MapLink>("map_link_create", { bookId, from, to });
+export const mapLinkLabel = (id: string, label: string) => invoke<void>("map_link_label", { id, label });
+export const mapLinkDelete = (id: string) => invoke<void>("map_link_delete", { id });
+export const mapCardToBible = (id: string, kind: BibleEntry["kind"]) => invoke<BibleEntry>("map_card_to_bible", { id, kind });
 
 export const imageAdd = (bookId: string, mime: string, b64: string, width: number, height: number) =>
   invoke<string>("image_add", { bookId, mime, b64, width, height });

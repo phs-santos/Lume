@@ -12,7 +12,7 @@ import Outline from "./Outline.vue";
 
 const sc = (id: string, chapter_id: string, title: string) => ({ id, chapter_id, title, word_count: 10, position: 0 });
 const outline: OutlineT = {
-  book: { id: "b", title: "L", ai_mode: "conselheira", created_at: 0 },
+  book: { id: "b", title: "L", ai_mode: "conselheira", created_at: 0, title_provisional: false },
   chapters: [
     { chapter: { id: "c1", book_id: "b", title: "Linha 340", position: 0 }, scenes: [sc("s1", "c1", "Linha 340")] },
     { chapter: { id: "c2", book_id: "b", title: "Parte", position: 1 }, scenes: [sc("s2", "c2", "Cena A"), sc("s3", "c2", "Cena B")] },

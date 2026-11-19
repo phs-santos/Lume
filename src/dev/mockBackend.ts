@@ -41,12 +41,14 @@ const handlers: Record<string, (a: any) => any> = {
   },
   book_list: () => db.books,
   book_create: ({ title, aiMode }) => {
-    const b = { id: id(), title, ai_mode: aiMode, created_at: Date.now() };
+    const t = String(title ?? "").trim();
+    const b = { id: id(), title: t || "Livro sem nome", ai_mode: aiMode, created_at: Date.now(), title_provisional: !t };
     db.books.push(b);
     const ch = handlers.chapter_create({ bookId: b.id, title: "Capítulo 1" });
     handlers.scene_create({ chapterId: ch.id, title: "Cena 1" });
     return b;
   },
+  book_rename: ({ id: bid, title }: any) => void Object.assign(db.books.find((b) => b.id === bid)!, { title, title_provisional: false }),
   book_outline: ({ bookId }) => ({
     book: db.books.find((b) => b.id === bookId),
     chapters: ordered(chaptersOf(bookId)).map((chapter) => ({
@@ -155,7 +157,7 @@ Object.assign(handlers, {
 const ai = { key: false, conv: [] as Row[], msgs: [] as Row[], bible: [] as Row[], models: { chat: "anthropic/claude-sonnet-5-5", background: "anthropic/claude-haiku-5-5" } };
 const curConv = (bookId: string) => {
   let c = ai.conv.find((x) => x.book_id === bookId && !x.closed);
-  if (!c) { c = { id: id(), book_id: bookId, title: "Conversa", rolling_summary: "", folded_count: 0, closed: false, created_at: Date.now(), updated_at: Date.now() }; ai.conv.push(c); }
+  if (!c) { c = { id: id(), book_id: bookId, title: "Conversa", rolling_summary: "", folded_count: 0, closed: false, created_at: Date.now(), updated_at: Date.now(), purpose: "livro" }; ai.conv.push(c); }
   return c;
 };
 const view = (c: Row) => ({ conversation: c, messages: ai.msgs.filter((m) => m.conversation_id === c.id) });
@@ -197,6 +199,37 @@ Object.assign(handlers, {
   bible_delete: ({ id: eid }: any) => void (ai.bible = ai.bible.filter((e) => e.id !== eid)),
   proposal_set_status: () => undefined,
   proposals_pending: () => [],
+  ai_conversation_new_idea: ({ bookId }: any) => {
+    ai.conv.forEach((c) => c.book_id === bookId && (c.closed = true));
+    const c = curConv(bookId); c.purpose = "ideia"; c.title = "Desenvolvendo a ideia";
+    return view(c);
+  },
+});
+
+// mapa de ideias (simulado)
+const map = { cards: [] as Row[], links: [] as Row[] };
+Object.assign(handlers, {
+  map_get: ({ bookId }: any) => ({ cards: map.cards.filter((c) => c.book_id === bookId), links: map.links.filter((l) => l.book_id === bookId) }),
+  map_card_create: ({ bookId, text, color, x, y }: any) => { const c = { id: id(), book_id: bookId, text, color, x, y, bible_entry_id: null, created_at: Date.now(), updated_at: Date.now() }; map.cards.push(c); return c; },
+  map_card_update: ({ id: cid, text, color }: any) => Object.assign(map.cards.find((c) => c.id === cid)!, { text, color }),
+  map_card_move: ({ id: cid, x, y }: any) => void Object.assign(map.cards.find((c) => c.id === cid)!, { x, y }),
+  map_card_delete: ({ id: cid }: any) => { map.cards = map.cards.filter((c) => c.id !== cid); map.links = map.links.filter((l) => l.from_card !== cid && l.to_card !== cid); },
+  map_link_create: ({ bookId, from, to }: any) => {
+    if (from === to) throw "um cartão não liga nele mesmo";
+    const old = map.links.find((l) => l.from_card === from && l.to_card === to);
+    if (old) return old;
+    const l = { id: id(), book_id: bookId, from_card: from, to_card: to, label: "" }; map.links.push(l); return l;
+  },
+  map_link_label: ({ id: lid, label }: any) => void (map.links.find((l) => l.id === lid)!.label = label.trim()),
+  map_link_delete: ({ id: lid }: any) => void (map.links = map.links.filter((l) => l.id !== lid)),
+  map_card_to_bible: ({ id: cid, kind }: any) => {
+    const c = map.cards.find((x) => x.id === cid)!;
+    const old = ai.bible.find((e) => e.id === c.bible_entry_id);
+    if (old) return old;
+    const [name, ...rest] = c.text.trim().split("\n");
+    const e = { id: id(), book_id: c.book_id, kind, name: name.trim(), aliases: [], body: rest.join("\n").trim(), ai_notes: [], story_order: null, source_scene_id: null, edited_by_user: true, updated_at: Date.now() };
+    ai.bible.push(e); c.bible_entry_id = e.id; return e;
+  },
 });
 
 // imagens e ficha do livro (simuladas)

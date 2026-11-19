@@ -5,7 +5,7 @@ import type { AiMessage, ChatEvent } from "../../lib/types";
 
 const flush = async () => { for (let i = 0; i < 4; i++) { await new Promise((r) => setTimeout(r, 0)); await nextTick(); } };
 const msg = (role: AiMessage["role"], content: string): AiMessage => ({ id: content, conversation_id: "cv", role, content, tool_name: null, created_at: 0 });
-const conv = (id: string, title = "Conversa") => ({ id, book_id: "b", title, rolling_summary: "", folded_count: 0, closed: false, created_at: 0, updated_at: 0 });
+const conv = (id: string, title = "Conversa") => ({ id, book_id: "b", title, rolling_summary: "", folded_count: 0, closed: false, created_at: 0, updated_at: 0, purpose: "livro" as const });
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(async () => {}) }));
 vi.mock("../../lib/api", () => ({

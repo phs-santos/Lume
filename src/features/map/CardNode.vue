@@ -78,7 +78,7 @@ const bibleKinds: BibleEntry["kind"][] = ["personagem", "lugar", "fato"];
           @click="pick(() => actions.save(id, card.text, c))"
         />
       </div>
-      <button v-for="k in bibleKinds" :key="k" class="menu-item" role="menuitem" :disabled="!!card.bible_entry_id" @click="pick(() => actions.toBible(id, k))">
+      <button v-for="k in bibleKinds" :key="k" class="menu-item" role="menuitem" :disabled="!!card.bible_entry_id || !card.text.trim()" @click="pick(() => actions.toBible(id, k))">
         Transformar em {{ KIND_NAMES[k].toLowerCase() }}
       </button>
       <button class="menu-item danger" role="menuitem" @click="pick(() => actions.remove(id))">Apagar cartão</button>

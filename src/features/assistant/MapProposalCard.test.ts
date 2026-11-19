@@ -13,7 +13,7 @@ import MapProposalCard from "./MapProposalCard.vue";
 const flush = async () => { for (let i = 0; i < 3; i++) { await new Promise((r) => setTimeout(r, 0)); await nextTick(); } };
 const cards: MapProposal = {
   id: "p", book_id: "b", conversation_id: "cv", kind: "cartoes", status: "pendente", created_at: 0,
-  payload_json: JSON.stringify({ cartoes: [{ ref: "a", texto: "Marina\nfaroleira" }, { ref: "b", texto: "A carta" }, { ref: "c", texto: "O irmão" }], setas: [{ de: "a", para: "b", rotulo: "" }] }),
+  payload_json: JSON.stringify({ cartoes: [{ ref: "a", texto: "Marina\nfaroleira" }, { ref: "b", texto: "A carta" }, { ref: "c", texto: "O irmão" }], setas: [{ de: "a", para: "b", rotulo: "" }, { de: "c", para: "id-velho", rotulo: "esconde", para_texto: "O farol" }] }),
 };
 const name: MapProposal = { ...cards, id: "n", kind: "nome", payload_json: JSON.stringify({ nome: "O Farol" }) };
 
@@ -34,11 +34,13 @@ describe("MapProposalCard", () => {
     const accepted: unknown[] = [];
     const el = await mount(cards, { onAccepted: (c) => accepted.push(c) });
     expect(el.textContent).toContain("A IA sugere 3 cartões para o mapa");
-    expect(el.textContent).toContain("+ 1 ligação");
+    const arrows = () => [...el.querySelectorAll(".arrows li")].map((li) => li.textContent!.trim());
+    expect(arrows()).toEqual(["Marina → A carta", "O irmão → O farol (esconde)"]);
     const boxes = [...el.querySelectorAll<HTMLInputElement>("input[type=checkbox]")];
     expect(boxes.map((b) => b.checked)).toEqual([true, true, true]);
     boxes[1].click();
     await flush();
+    expect(arrows()).toEqual(["O irmão → O farol (esconde)"]);
     button(el, "Pôr no mapa").click();
     await flush();
     expect(api.mapProposalAccept).toHaveBeenCalledWith("p", ["a", "c"]);

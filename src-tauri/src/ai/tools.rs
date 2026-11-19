@@ -56,7 +56,8 @@ pub fn defs(mode: &str, purpose: &str) -> Vec<ToolDef> {
         v.push(def("propor_nome", "Sugere um nome para o livro. Só muda se a pessoa aceitar.",
             json!({"type":"object","properties":{"nome":{"type":"string"}},"required":["nome"]})));
     }
-    if mode == "coautora" {
+    // na conversa da ideia a IA não escreve o livro, em nenhum modo
+    if mode == "coautora" && purpose != "ideia" {
         v.push(def("propor_trecho", "Propõe um trecho de texto para o livro. Ele NÃO entra no texto: aparece como proposta para a pessoa aprovar.",
             json!({"type":"object","properties":{"texto":{"type":"string"}},"required":["texto"]})));
     }
@@ -176,6 +177,9 @@ pub fn run(c: &Connection, book_id: &str, mode: &str, current_scene_id: Option<&
             "propor_trecho" => {
                 if mode != "coautora" {
                     return Ok(err("no modo Conselheira não é permitido propor texto para o livro"));
+                }
+                if ai::conversation_get(c, conversation_id)?.purpose == "ideia" {
+                    return Ok(err("nesta conversa o objetivo é a ideia do livro: não proponha texto"));
                 }
                 let Some(text) = arg(&args, "texto") else { return Ok(err("falta 'texto'")) };
                 let p = ai::proposal_add(c, book_id, Some(conversation_id), current_scene_id, text, now)?;
@@ -301,6 +305,17 @@ mod tests {
             assert!(!names.contains(&"propor_nome".to_string()));
             assert!(defs(mode, "ideia").iter().any(|d| d.name == "propor_nome"));
         }
+    }
+
+    #[test]
+    fn idea_conversation_never_offers_or_runs_propor_trecho() {
+        assert!(!defs("coautora", "ideia").iter().any(|d| d.name == "propor_trecho"));
+        let (_d, c) = test_conn();
+        let b = testkit::sample(&c, "coautora");
+        let idea = ai::conversation_new_idea(&c, &b.id, 1).unwrap();
+        let o = run(&c, &b.id, "coautora", None, &idea.id, &call("propor_trecho", serde_json::json!({"texto":"x"})), 2);
+        assert!(o.result.starts_with("Erro"));
+        assert!(ai::proposals_pending(&c, &b.id).unwrap().is_empty());
     }
 
     #[test]

@@ -1,19 +1,21 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, provide, ref, shallowRef, watch } from "vue";
-import { ConnectionMode, VueFlow, useVueFlow, type Connection, type Edge, type EdgeChange, type EdgeMouseEvent, type Node, type NodeChange, type NodeDragEvent } from "@vue-flow/core";
+import { ConnectionMode, VueFlow, useVueFlow, type Connection, type Edge, type EdgeMouseEvent, type Node, type NodeDragEvent } from "@vue-flow/core";
 import "@vue-flow/core/dist/style.css";
 import { IconFocusCentered, IconPlus } from "@tabler/icons-vue";
 import { bibleList, mapCardCreate, mapCardDelete, mapCardMove, mapCardToBible, mapCardUpdate, mapGet, mapLinkCreate, mapLinkDelete, mapLinkLabel } from "../../lib/api";
 import type { BibleEntry, CardColor, MapCard } from "../../lib/types";
 import CardNode from "./CardNode.vue";
 import { MAP_ACTIONS } from "./actions";
+import { isMapDeleteKey } from "./keys";
+import { errorMessage } from "../../lib/errors";
 import { CARD_H, CARD_W, newCardsBounds, toEdges, toNodes, type CardData } from "./flow";
 
 const props = defineProps<{ bookId: string }>();
 const emit = defineEmits<{ bibleChanged: [] }>();
 
 const flowId = `mapa-${props.bookId}`;
-const { fitView, fitBounds, screenToFlowCoordinate, viewport, dimensions } = useVueFlow(flowId);
+const { fitView, fitBounds, screenToFlowCoordinate, viewport, dimensions, getSelectedNodes, getSelectedEdges } = useVueFlow(flowId);
 
 const cards = ref<MapCard[]>([]);
 const nodes = shallowRef<Node[]>([]);
@@ -31,7 +33,8 @@ async function attempt(fn: () => Promise<unknown>) {
   try {
     await fn();
   } catch (e) {
-    error.value = `Não deu para salvar no mapa: ${e}`;
+    error.value = `Não deu para salvar no mapa: ${errorMessage(e)}`;
+    await reload().catch(() => {}); // a tela volta a mostrar o que está guardado
   }
 }
 
@@ -119,15 +122,19 @@ function onConnect(c: Connection) {
   });
 }
 
-/** Delete/Backspace com algo selecionado: o Vue Flow tira da tela; aqui apaga do cofre. */
-function onNodesChange(changes: NodeChange[]) {
-  for (const ch of changes) if (ch.type === "remove") void attempt(async () => {
-    await mapCardDelete(ch.id);
-    setCards(cards.value.filter((c) => c.id !== ch.id));
+/** Delete/Backspace com o foco num cartão ou seta selecionado: apaga do cofre. */
+function onKeydown(e: KeyboardEvent) {
+  if (!isMapDeleteKey(e, root.value)) return;
+  const nodeIds = getSelectedNodes.value.map((n) => n.id);
+  const edgeIds = getSelectedEdges.value.map((x) => x.id);
+  if (!nodeIds.length && !edgeIds.length) return;
+  e.preventDefault();
+  void attempt(async () => {
+    for (const id of nodeIds) await mapCardDelete(id);
+    for (const id of edgeIds) await mapLinkDelete(id);
+    setCards(cards.value.filter((c) => !nodeIds.includes(c.id)));
+    edges.value = edges.value.filter((x) => !edgeIds.includes(x.id) && !nodeIds.includes(x.source) && !nodeIds.includes(x.target));
   });
-}
-function onEdgesChange(changes: EdgeChange[]) {
-  for (const ch of changes) if (ch.type === "remove") void attempt(() => mapLinkDelete(ch.id));
 }
 
 async function onEdgeDblClick({ edge, event }: EdgeMouseEvent) {
@@ -168,13 +175,13 @@ defineExpose({ reload, focusCards });
 </script>
 
 <template>
-  <section ref="root" class="map" aria-label="Mapa de ideias" @dblclick="onDblClick">
+  <section ref="root" class="map" aria-label="Mapa de ideias" @dblclick="onDblClick" @keydown="onKeydown">
     <VueFlow
       :id="flowId"
       v-model:nodes="nodes"
       v-model:edges="edges"
       :zoom-on-double-click="false"
-      :delete-key-code="['Backspace', 'Delete']"
+      :delete-key-code="null"
       multi-selection-key-code="Shift"
       :connection-mode="ConnectionMode.Loose"
       :min-zoom="0.2"
@@ -182,8 +189,6 @@ defineExpose({ reload, focusCards });
       :apply-default="true"
       @node-drag-stop="onDragStop"
       @connect="onConnect"
-      @nodes-change="onNodesChange"
-      @edges-change="onEdgesChange"
       @edge-double-click="onEdgeDblClick"
     >
       <template #node-card="p"><CardNode v-bind="p" /></template>

@@ -236,7 +236,15 @@ pub fn proposal_add_cards(c: &Connection, book_id: &str, conv_id: Option<&str>, 
         if a == z {
             return Err(invalid("seta de um cartão para ele mesmo"));
         }
-        clean_links.push(serde_json::json!({"de": a, "para": z, "rotulo": str_of(l, "rotulo")}));
+        let mut link = serde_json::json!({"de": a, "para": z, "rotulo": str_of(l, "rotulo")});
+        // seta para um cartão que já está no mapa: guarda o título dele para a pessoa ver o que aprova
+        for (end, key) in [(a, "de_texto"), (z, "para_texto")] {
+            if !refs.contains(end) {
+                let t = card_get(c, end)?.text;
+                link[key] = serde_json::Value::from(t.trim().lines().next().unwrap_or("").trim());
+            }
+        }
+        clean_links.push(link);
     }
     insert_proposal(c, book_id, conv_id, "cartoes", &serde_json::json!({"cartoes": clean_cards, "setas": clean_links}), now)
 }
@@ -502,6 +510,17 @@ mod tests {
         let many: Vec<(&str, &str)> = many.iter().map(|(a, z)| (a.as_str(), z.as_str())).collect();
         assert!(proposal_add_cards(&c, &b, None, &cards_payload(&many, &[]), 2).is_err());
         assert!(proposals_pending(&c, &b).unwrap().is_empty());
+    }
+
+    #[test]
+    fn arrows_to_existing_cards_carry_their_text() {
+        let (_d, c) = test_conn();
+        let b = book(&c, "A");
+        let old = card_create(&c, &b, "Marina\nfaroleira", "papel", 0.0, 0.0, 1).unwrap();
+        let p = proposal_add_cards(&c, &b, None, &cards_payload(&[("a", "A carta")], &[("a", &old.id)]), 2).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&p.payload_json).unwrap();
+        assert_eq!(v["setas"][0]["para_texto"], "Marina");
+        assert!(v["setas"][0].get("de_texto").is_none());
     }
 
     #[test]

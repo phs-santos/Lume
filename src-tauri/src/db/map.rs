@@ -156,6 +156,159 @@ pub fn card_to_bible(c: &Connection, card_id: &str, kind: &str, now: i64) -> Res
     Ok(entry)
 }
 
+// ---------- propostas da IA ----------
+
+/// Cartões ou nome sugeridos pela IA, esperando a pessoa decidir.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct MapProposal {
+    pub id: String,
+    pub book_id: String,
+    pub conversation_id: Option<String>,
+    /// "cartoes" ou "nome".
+    pub kind: String,
+    pub payload_json: String,
+    pub status: String,
+    pub created_at: i64,
+}
+
+const PROP_COLS: &str = "id,book_id,conversation_id,kind,payload_json,status,created_at";
+/// Máximo de cartões numa proposta.
+pub const MAX_PROPOSED: usize = 12;
+const MAX_CARD_TEXT: usize = 500;
+
+fn prop_row(r: &rusqlite::Row) -> rusqlite::Result<MapProposal> {
+    Ok(MapProposal { id: r.get(0)?, book_id: r.get(1)?, conversation_id: r.get(2)?, kind: r.get(3)?, payload_json: r.get(4)?, status: r.get(5)?, created_at: r.get(6)? })
+}
+
+fn str_of<'a>(v: &'a serde_json::Value, k: &str) -> &'a str {
+    v.get(k).and_then(serde_json::Value::as_str).map(str::trim).unwrap_or("")
+}
+
+fn invalid(m: impl Into<String>) -> DbError {
+    DbError::Invalid(m.into())
+}
+
+fn insert_proposal(c: &Connection, book_id: &str, conv_id: Option<&str>, kind: &str, payload: &serde_json::Value, now: i64) -> Result<MapProposal, DbError> {
+    let id = new_id();
+    c.execute(
+        "INSERT INTO map_proposals(id,book_id,conversation_id,kind,payload_json,status,created_at) VALUES(?1,?2,?3,?4,?5,'pendente',?6)",
+        params![id, book_id, conv_id, kind, payload.to_string(), now],
+    )?;
+    proposal_get(c, &id)
+}
+
+pub fn proposal_get(c: &Connection, id: &str) -> Result<MapProposal, DbError> {
+    c.query_row(&format!("SELECT {PROP_COLS} FROM map_proposals WHERE id=?1"), [id], prop_row).optional()?.ok_or(DbError::NotFound)
+}
+
+/// Valida e guarda uma proposta de cartões. Payload:
+/// `{"cartoes":[{"ref","texto"}],"setas":[{"de","para","rotulo"?}]}`; `de`/`para` é um ref novo
+/// ou o id de um cartão deste livro.
+pub fn proposal_add_cards(c: &Connection, book_id: &str, conv_id: Option<&str>, payload: &serde_json::Value, now: i64) -> Result<MapProposal, DbError> {
+    let empty = vec![];
+    let cards = payload.get("cartoes").and_then(serde_json::Value::as_array).unwrap_or(&empty);
+    if cards.is_empty() || cards.len() > MAX_PROPOSED {
+        return Err(invalid(format!("proponha de 1 a {MAX_PROPOSED} cartões")));
+    }
+    let mut refs = std::collections::HashSet::new();
+    let mut clean_cards = vec![];
+    for k in cards {
+        let (r, t) = (str_of(k, "ref"), str_of(k, "texto"));
+        if r.is_empty() || t.is_empty() {
+            return Err(invalid("todo cartão precisa de 'ref' e 'texto'"));
+        }
+        if t.chars().count() > MAX_CARD_TEXT {
+            return Err(invalid(format!("texto de cartão com mais de {MAX_CARD_TEXT} caracteres")));
+        }
+        if !refs.insert(r.to_string()) {
+            return Err(invalid(format!("ref repetido: {r}")));
+        }
+        clean_cards.push(serde_json::json!({"ref": r, "texto": t}));
+    }
+    let mut clean_links = vec![];
+    for l in payload.get("setas").and_then(serde_json::Value::as_array).unwrap_or(&empty) {
+        let (a, z) = (str_of(l, "de"), str_of(l, "para"));
+        for end in [a, z] {
+            if !refs.contains(end) && !card_in_book(c, book_id, end)? {
+                return Err(invalid(format!("a seta cita '{end}', que não é um cartão novo nem um cartão do mapa")));
+            }
+        }
+        if a == z {
+            return Err(invalid("seta de um cartão para ele mesmo"));
+        }
+        clean_links.push(serde_json::json!({"de": a, "para": z, "rotulo": str_of(l, "rotulo")}));
+    }
+    insert_proposal(c, book_id, conv_id, "cartoes", &serde_json::json!({"cartoes": clean_cards, "setas": clean_links}), now)
+}
+
+pub fn proposal_add_name(c: &Connection, book_id: &str, conv_id: Option<&str>, nome: &str, now: i64) -> Result<MapProposal, DbError> {
+    let nome = nome.trim();
+    if nome.is_empty() {
+        return Err(invalid("nome vazio"));
+    }
+    insert_proposal(c, book_id, conv_id, "nome", &serde_json::json!({"nome": nome}), now)
+}
+
+pub fn proposals_pending(c: &Connection, book_id: &str) -> Result<Vec<MapProposal>, DbError> {
+    let mut st = c.prepare(&format!("SELECT {PROP_COLS} FROM map_proposals WHERE book_id=?1 AND status='pendente' ORDER BY created_at, rowid"))?;
+    let v = st.query_map([book_id], prop_row)?.collect::<Result<_, _>>()?;
+    Ok(v)
+}
+
+/// Aceita a proposta. Cartões: cria os `refs` escolhidos em grade à direita do mapa e as setas
+/// cujos dois lados existem. Nome: renomeia o livro (deixa de ser provisório).
+pub fn proposal_accept(c: &Connection, id: &str, refs: &[String], now: i64) -> Result<Vec<MapCard>, DbError> {
+    let p = proposal_get(c, id)?;
+    if p.status != "pendente" {
+        return Err(invalid("proposta já resolvida"));
+    }
+    let payload: serde_json::Value = serde_json::from_str(&p.payload_json).map_err(|e| invalid(e.to_string()))?;
+    let tx = super::Atomic::begin(c)?;
+    let mut out = vec![];
+    if p.kind == "nome" {
+        super::books::book_rename(c, &p.book_id, str_of(&payload, "nome"))?;
+    } else {
+        let chosen: Vec<&serde_json::Value> = payload["cartoes"].as_array().into_iter().flatten().filter(|k| refs.iter().any(|r| r == str_of(k, "ref"))).collect();
+        if chosen.is_empty() {
+            return Err(invalid("escolha ao menos um cartão"));
+        }
+        let (ox, oy): (f64, f64) = c.query_row(
+            "SELECT COALESCE(MAX(x) + 320, 0), COALESCE(MIN(y), 0) FROM map_cards WHERE book_id=?1",
+            [&p.book_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let mut by_ref = std::collections::HashMap::new();
+        for (i, k) in chosen.iter().enumerate() {
+            let (col, row) = ((i % 3) as f64, (i / 3) as f64);
+            let card = card_create(c, &p.book_id, str_of(k, "texto"), COLORS[0], ox + col * 280.0, oy + row * 180.0, now)?;
+            by_ref.insert(str_of(k, "ref").to_string(), card.id.clone());
+            out.push(card);
+        }
+        let resolve = |end: &str| -> Result<Option<String>, DbError> {
+            if let Some(id) = by_ref.get(end) {
+                return Ok(Some(id.clone()));
+            }
+            Ok(card_in_book(c, &p.book_id, end)?.then(|| end.to_string()))
+        };
+        for l in payload["setas"].as_array().into_iter().flatten() {
+            if let (Some(a), Some(z)) = (resolve(str_of(l, "de"))?, resolve(str_of(l, "para"))?) {
+                let link = link_create(c, &p.book_id, &a, &z)?;
+                let label = str_of(l, "rotulo");
+                if !label.is_empty() {
+                    link_set_label(c, &link.id, label)?;
+                }
+            }
+        }
+    }
+    c.execute("UPDATE map_proposals SET status='aceita' WHERE id=?1", [id])?;
+    tx.commit()?;
+    Ok(out)
+}
+
+pub fn proposal_discard(c: &Connection, id: &str) -> Result<(), DbError> {
+    affected(c.execute("UPDATE map_proposals SET status='descartada' WHERE id=?1 AND status='pendente'", [id])?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,5 +409,119 @@ mod tests {
         let e = card_to_bible(&c, &a.id, "lugar", 2).unwrap();
         ai::bible_delete(&c, &e.id).unwrap();
         assert_eq!(map_get(&c, &b).unwrap().cards[0].bible_entry_id, None);
+    }
+
+    fn cards_payload(cards: &[(&str, &str)], links: &[(&str, &str)]) -> serde_json::Value {
+        serde_json::json!({
+            "cartoes": cards.iter().map(|(r, t)| serde_json::json!({"ref": r, "texto": t})).collect::<Vec<_>>(),
+            "setas": links.iter().map(|(a, z)| serde_json::json!({"de": a, "para": z})).collect::<Vec<_>>(),
+        })
+    }
+
+    #[test]
+    fn accept_places_cards_right_of_existing_in_grid() {
+        let (_d, c) = test_conn();
+        let b = book(&c, "A");
+        card_create(&c, &b, "velho", "papel", 100.0, 50.0, 1).unwrap();
+        let p = proposal_add_cards(&c, &b, None, &cards_payload(&[("a", "1"), ("b", "2"), ("c", "3"), ("d", "4")], &[]), 2).unwrap();
+        let got = proposal_accept(&c, &p.id, &["a".into(), "b".into(), "c".into(), "d".into()], 3).unwrap();
+        let pos: Vec<(f64, f64)> = got.iter().map(|k| (k.x, k.y)).collect();
+        assert_eq!(pos, vec![(420.0, 50.0), (700.0, 50.0), (980.0, 50.0), (420.0, 230.0)]);
+        assert_eq!(got[0].text, "1");
+    }
+
+    #[test]
+    fn accept_on_empty_map_starts_at_origin() {
+        let (_d, c) = test_conn();
+        let b = book(&c, "A");
+        let p = proposal_add_cards(&c, &b, None, &cards_payload(&[("a", "1")], &[]), 2).unwrap();
+        let got = proposal_accept(&c, &p.id, &["a".into()], 3).unwrap();
+        assert_eq!((got[0].x, got[0].y), (0.0, 0.0));
+    }
+
+    #[test]
+    fn accept_subset_skips_links_to_unchosen() {
+        let (_d, c) = test_conn();
+        let b = book(&c, "A");
+        let old = card_create(&c, &b, "velho", "papel", 0.0, 0.0, 1).unwrap();
+        let p = proposal_add_cards(&c, &b, None, &cards_payload(&[("a", "1"), ("b", "2")], &[("a", "b"), ("a", &old.id)]), 2).unwrap();
+        proposal_accept(&c, &p.id, &["a".into()], 3).unwrap();
+        let m = map_get(&c, &b).unwrap();
+        assert_eq!(m.cards.len(), 2);
+        assert_eq!(m.links.len(), 1);
+        assert_eq!(m.links[0].to_card, old.id);
+    }
+
+    #[test]
+    fn accept_ignores_link_to_deleted_card() {
+        let (_d, c) = test_conn();
+        let b = book(&c, "A");
+        let old = card_create(&c, &b, "velho", "papel", 0.0, 0.0, 1).unwrap();
+        let p = proposal_add_cards(&c, &b, None, &cards_payload(&[("a", "1")], &[("a", &old.id)]), 2).unwrap();
+        card_delete(&c, &old.id).unwrap();
+        let got = proposal_accept(&c, &p.id, &["a".into()], 3).unwrap();
+        assert_eq!(got.len(), 1);
+        assert!(map_get(&c, &b).unwrap().links.is_empty());
+    }
+
+    #[test]
+    fn accept_twice_fails_without_duplicates() {
+        let (_d, c) = test_conn();
+        let b = book(&c, "A");
+        let p = proposal_add_cards(&c, &b, None, &cards_payload(&[("a", "1")], &[]), 2).unwrap();
+        proposal_accept(&c, &p.id, &["a".into()], 3).unwrap();
+        assert!(matches!(proposal_accept(&c, &p.id, &["a".into()], 4), Err(DbError::Invalid(_))));
+        assert_eq!(map_get(&c, &b).unwrap().cards.len(), 1);
+        assert!(proposals_pending(&c, &b).unwrap().is_empty());
+    }
+
+    #[test]
+    fn accept_with_no_refs_fails() {
+        let (_d, c) = test_conn();
+        let b = book(&c, "A");
+        let p = proposal_add_cards(&c, &b, None, &cards_payload(&[("a", "1")], &[]), 2).unwrap();
+        assert!(matches!(proposal_accept(&c, &p.id, &[], 3), Err(DbError::Invalid(_))));
+        assert_eq!(proposals_pending(&c, &b).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn add_cards_rejects_unknown_foreign_or_empty() {
+        let (_d, c) = test_conn();
+        let (b, other) = (book(&c, "A"), book(&c, "B"));
+        let foreign = card_create(&c, &other, "x", "papel", 0.0, 0.0, 1).unwrap();
+        for payload in [
+            cards_payload(&[("a", "1")], &[("a", "nao-existe")]),
+            cards_payload(&[("a", "1")], &[("a", &foreign.id)]),
+            cards_payload(&[], &[]),
+            cards_payload(&[("a", "  ")], &[]),
+            cards_payload(&[("a", "1"), ("a", "2")], &[]),
+        ] {
+            assert!(matches!(proposal_add_cards(&c, &b, None, &payload, 2), Err(DbError::Invalid(_))), "{payload}");
+        }
+        let many: Vec<(String, String)> = (0..13).map(|i| (format!("r{i}"), "t".to_string())).collect();
+        let many: Vec<(&str, &str)> = many.iter().map(|(a, z)| (a.as_str(), z.as_str())).collect();
+        assert!(proposal_add_cards(&c, &b, None, &cards_payload(&many, &[]), 2).is_err());
+        assert!(proposals_pending(&c, &b).unwrap().is_empty());
+    }
+
+    #[test]
+    fn name_proposal_renames_and_clears_provisional() {
+        let (_d, c) = test_conn();
+        let b = book(&c, "");
+        let p = proposal_add_name(&c, &b, None, " O Farol ", 2).unwrap();
+        assert!(proposal_accept(&c, &p.id, &[], 3).unwrap().is_empty());
+        let o = books::book_outline(&c, &b).unwrap();
+        assert_eq!(o.book.title, "O Farol");
+        assert!(!o.book.title_provisional);
+    }
+
+    #[test]
+    fn discard_sets_status() {
+        let (_d, c) = test_conn();
+        let b = book(&c, "A");
+        let p = proposal_add_name(&c, &b, None, "X", 2).unwrap();
+        proposal_discard(&c, &p.id).unwrap();
+        assert!(proposals_pending(&c, &b).unwrap().is_empty());
+        assert!(proposal_accept(&c, &p.id, &[], 3).is_err());
     }
 }

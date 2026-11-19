@@ -60,6 +60,7 @@ export type ChatEvent =
   | { type: "delta"; text: string }
   | { type: "note"; text: string }
   | { type: "proposal"; proposal: Proposal }
+  | { type: "map_proposal"; proposal: MapProposal }
   | { type: "done"; message_id: string; input_tokens: number; output_tokens: number; cost: number | null }
   | { type: "error"; message: string };
 export interface Progress { done: number; total: number }
@@ -77,3 +78,8 @@ export interface MapCard {
 }
 export interface MapLink { id: string; book_id: string; from_card: string; to_card: string; label: string }
 export interface MapData { cards: MapCard[]; links: MapLink[] }
+export interface MapProposal {
+  id: string; book_id: string; conversation_id: string | null; kind: "cartoes" | "nome";
+  /** JSON: cartoes → {cartoes:[{ref,texto}], setas:[{de,para,rotulo}]}; nome → {nome} */
+  payload_json: string; status: "pendente" | "aceita" | "descartada"; created_at: number;
+}

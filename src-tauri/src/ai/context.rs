@@ -25,10 +25,16 @@ Você NÃO escreve no texto do livro e não tem como alterá-lo; se pedirem, exp
     }
 }
 
-const COMMON: &str = "Regras: antes de afirmar algo sobre o livro, consulte (mapa, Bíblia, buscar_no_livro, ler_cena). \
+const COMMON: &str = "Regras: antes de afirmar algo sobre o livro, consulte (sumário, Bíblia, buscar_no_livro, ler_cena). \
 Nunca invente fatos do livro; se não achar, diga que não encontrou. \
 Quando surgir um fato novo e estável (personagem, lugar, acontecimento), registre com salvar_ficha. \
-Seja econômica: para perguntas sobre o livro inteiro (análise, ritmo, arcos), use o mapa com os resumos e a Bíblia; leia uma cena inteira só quando precisar de um detalhe dela. Escreva em texto simples, sem Markdown (sem **, #, tabelas); listas curtas com hífen são ok. Os ids são só para as ferramentas: nunca mostre ids para a pessoa, cite cenas e capítulos pelo nome.";
+Seja econômica: para perguntas sobre o livro inteiro (análise, ritmo, arcos), use o sumário com os resumos e a Bíblia; leia uma cena inteira só quando precisar de um detalhe dela. Escreva em texto simples, sem Markdown (sem **, #, tabelas); listas curtas com hífen são ok. Os ids são só para as ferramentas: nunca mostre ids para a pessoa, cite cenas e capítulos pelo nome. \
+O mapa de ideias (cartões ligados por setas) é da pessoa: leia com ler_mapa e, para sugerir cartões, use propor_cartoes; eles só entram se ela aprovar. Nunca diga que alterou o mapa.";
+
+const IDEA: &str = "Esta conversa é para desenvolver a ideia de um livro novo. Ajude a pessoa a transformar a ideia em história: \
+faça uma pergunta por vez (premissa, protagonista, o que ela quer, o que a impede, o mundo, o tom, um final possível), \
+devolva em poucas linhas o que entendeu e, a cada ponto que firmar, use propor_cartoes com cartões curtos ligados entre si. \
+Quando a história tiver forma, sugira um nome com propor_nome. Não escreva o livro nem cenas: o objetivo é a ideia.";
 
 /// Bíblia em uma linha por ficha: `id · tipo · nome (apelidos): 1ª linha`.
 pub fn bible_compact(c: &Connection, book_id: &str) -> Result<String, DbError> {
@@ -62,9 +68,10 @@ pub fn build(c: &Connection, book_id: &str, current_scene_id: Option<&str>, conv
     let cv = ai::conversation_get(c, conversation_id)?;
     let summary = if cv.rolling_summary.is_empty() { String::new() } else { format!("\n\n# Resumo do início desta conversa\n{}", cv.rolling_summary) };
     let system = format!(
-        "{}\n{}\nModo: {}.\n\n# Livro: {}\n\n# Bíblia (fichas)\n{}\n\n# Mapa do livro\n{}\n{}{}",
+        "{}\n{}{}\nModo: {}.\n\n# Livro: {}\n\n# Bíblia (fichas)\n{}\n\n# Sumário do livro\n{}\n{}{}",
         rules(&mode),
         COMMON,
+        if cv.purpose == "ideia" { format!("\n{IDEA}") } else { String::new() },
         if mode == "coautora" { "Coautora" } else { "Conselheira" },
         outline.book.title,
         bible_compact(c, book_id)?,
@@ -87,6 +94,10 @@ mod tests {
     use super::*;
     use crate::ai::testkit;
     use crate::db::{ai, test_conn};
+
+    fn defs_text() -> String {
+        crate::ai::tools::defs("conselheira", "livro").into_iter().map(|d| d.description).collect::<Vec<_>>().join("\n")
+    }
 
     #[test]
     fn context_order_and_window() {
@@ -122,6 +133,30 @@ mod tests {
         let i_bible = s.find("Rafa (Rafael)").unwrap();
         let i_map = s.find("Rafa descobre").unwrap();
         assert!(i_bible < i_map);
+    }
+
+    #[test]
+    fn idea_conversation_gets_idea_instructions() {
+        let (_d, c) = test_conn();
+        let b = testkit::sample(&c, "conselheira");
+        let cv = ai::conversation_current(&c, &b.id, 1).unwrap();
+        assert!(!build(&c, &b.id, None, &cv.id).unwrap()[0].content.contains("uma pergunta por vez"));
+        let idea = ai::conversation_new_idea(&c, &b.id, 2).unwrap();
+        let s = &build(&c, &b.id, None, &idea.id).unwrap()[0].content;
+        assert!(s.contains("uma pergunta por vez"));
+        assert!(s.contains("propor_nome"));
+    }
+
+    #[test]
+    fn outline_is_called_sumario() {
+        let (_d, c) = test_conn();
+        let b = testkit::sample(&c, "conselheira");
+        let cv = ai::conversation_current(&c, &b.id, 1).unwrap();
+        let s = &build(&c, &b.id, None, &cv.id).unwrap()[0].content;
+        assert!(s.contains("# Sumário do livro"));
+        assert!(!s.contains("Mapa do livro"));
+        assert!(s.contains("propor_cartoes"));
+        assert!(defs_text().contains("sumário"));
     }
 
     #[test]

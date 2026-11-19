@@ -436,7 +436,7 @@ db_cmd!(proposals_pending(book_id: String) -> Vec<Proposal> => |c| aidb::proposa
 db_cmd!(ai_conversation_new_idea(book_id: String) -> ConversationView => |c| { let cv = aidb::conversation_new_idea(c, &book_id, now_ms())?; conversation_view(c, cv) });
 
 // ---------- mapa de ideias ----------
-use crate::db::map::{self as mapdb, MapCard, MapData, MapLink};
+use crate::db::map::{self as mapdb, MapCard, MapData, MapLink, MapProposal};
 
 db_cmd!(map_get(book_id: String) -> MapData => |c| mapdb::map_get(c, &book_id));
 db_cmd!(map_card_create(book_id: String, text: String, color: String, x: f64, y: f64) -> MapCard => |c| mapdb::card_create(c, &book_id, &text, &color, x, y, now_ms()));
@@ -447,6 +447,9 @@ db_cmd!(map_link_create(book_id: String, from: String, to: String) -> MapLink =>
 db_cmd!(map_link_label(id: String, label: String) -> () => |c| mapdb::link_set_label(c, &id, &label));
 db_cmd!(map_link_delete(id: String) -> () => |c| mapdb::link_delete(c, &id));
 db_cmd!(map_card_to_bible(id: String, kind: String) -> BibleEntry => |c| mapdb::card_to_bible(c, &id, &kind, now_ms()));
+db_cmd!(map_proposals_pending(book_id: String) -> Vec<MapProposal> => |c| mapdb::proposals_pending(c, &book_id));
+db_cmd!(map_proposal_accept(id: String, refs: Vec<String>) -> Vec<MapCard> => |c| mapdb::proposal_accept(c, &id, &refs, now_ms()));
+db_cmd!(map_proposal_discard(id: String) -> () => |c| mapdb::proposal_discard(c, &id));
 
 /// Envia uma mensagem e transmite a resposta pelo canal.
 #[tauri::command]

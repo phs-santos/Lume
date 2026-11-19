@@ -1,5 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
-import type { AiModels, BibleEntry, CardColor, ChatEvent, Conversation, ConversationView, MapCard, MapData, MapLink, Progress, Proposal, UsageRow } from "./types";
+import type { AiModels, BibleEntry, CardColor, ChatEvent, Conversation, ConversationView, MapCard, MapData, MapLink, MapProposal, Progress, Proposal, UsageRow } from "./types";
 import type { AiMode, Book, BookMeta, InboxItem, RemoteStatus, Chapter, Outline, Scene, Version, VaultStatus } from "./types";
 
 export interface Profile { id: string; nickname: string; active: boolean }
@@ -106,6 +106,9 @@ export const mapLinkCreate = (bookId: string, from: string, to: string) => invok
 export const mapLinkLabel = (id: string, label: string) => invoke<void>("map_link_label", { id, label });
 export const mapLinkDelete = (id: string) => invoke<void>("map_link_delete", { id });
 export const mapCardToBible = (id: string, kind: BibleEntry["kind"]) => invoke<BibleEntry>("map_card_to_bible", { id, kind });
+export const mapProposalsPending = (bookId: string) => invoke<MapProposal[]>("map_proposals_pending", { bookId });
+export const mapProposalAccept = (id: string, refs: string[]) => invoke<MapCard[]>("map_proposal_accept", { id, refs });
+export const mapProposalDiscard = (id: string) => invoke<void>("map_proposal_discard", { id });
 
 export const imageAdd = (bookId: string, mime: string, b64: string, width: number, height: number) =>
   invoke<string>("image_add", { bookId, mime, b64, width, height });

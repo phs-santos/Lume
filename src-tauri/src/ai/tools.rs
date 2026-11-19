@@ -3,6 +3,7 @@
 use crate::ai::provider::{ToolCall, ToolDef};
 use crate::ai::text::plain_text;
 use crate::db::ai::{self, fold, Proposal};
+use crate::db::map::{self as mapdb, MapProposal};
 use crate::db::{books, scenes};
 use rusqlite::Connection;
 use serde_json::{json, Value};
@@ -13,18 +14,21 @@ pub struct ToolOutcome {
     /// Linha discreta para a interface ("consultei a cena X"). Vazia = nada a mostrar.
     pub note: String,
     pub proposal: Option<Proposal>,
+    /// Cartões ou nome sugeridos para o mapa, esperando aprovação.
+    pub map_proposal: Option<MapProposal>,
 }
 
 fn def(name: &str, description: &str, parameters: Value) -> ToolDef {
     ToolDef { name: name.into(), description: description.into(), parameters }
 }
 
-/// Ferramentas oferecidas ao modelo. `propor_trecho` só existe no modo coautora.
-pub fn defs(mode: &str) -> Vec<ToolDef> {
+/// Ferramentas oferecidas ao modelo. `propor_trecho` só existe no modo coautora;
+/// `propor_nome`, só na conversa de desenvolver a ideia (`purpose == "ideia"`).
+pub fn defs(mode: &str, purpose: &str) -> Vec<ToolDef> {
     let mut v = vec![
         def("buscar_no_livro", "Busca uma palavra ou expressão em todas as cenas do livro. Devolve trechos com a cena e o capítulo.",
             json!({"type":"object","properties":{"texto":{"type":"string"}},"required":["texto"]})),
-        def("ler_cena", "Lê o texto completo de uma cena pelo id (os ids estão no mapa do livro).",
+        def("ler_cena", "Lê o texto completo de uma cena pelo id (os ids estão no sumário do livro).",
             json!({"type":"object","properties":{"id":{"type":"string"}},"required":["id"]})),
         def("ler_ficha", "Lê a ficha completa da Bíblia pelo id, nome ou apelido.",
             json!({"type":"object","properties":{"id_ou_nome":{"type":"string"}},"required":["id_ou_nome"]})),
@@ -40,7 +44,18 @@ pub fn defs(mode: &str) -> Vec<ToolDef> {
             },"required":["tipo","nome","fato"]})),
         def("ler_conversas_anteriores", "Título e resumo das conversas anteriores sobre este livro.",
             json!({"type":"object","properties":{}})),
+        def("ler_mapa", "Lê o mapa de ideias da pessoa: os cartões (com id) e as setas entre eles.",
+            json!({"type":"object","properties":{}})),
+        def("propor_cartoes", "Sugere cartões (e setas) para o mapa de ideias. NÃO entram no mapa: aparecem para a pessoa aprovar. Use 'ref' curto para cada cartão novo; nas setas, 'de' e 'para' são um ref novo ou o id de um cartão que já está no mapa.",
+            json!({"type":"object","properties":{
+                "cartoes":{"type":"array","maxItems":mapdb::MAX_PROPOSED,"items":{"type":"object","properties":{"ref":{"type":"string"},"texto":{"type":"string","description":"Curto: primeira linha é o título do cartão."}},"required":["ref","texto"]}},
+                "setas":{"type":"array","items":{"type":"object","properties":{"de":{"type":"string"},"para":{"type":"string"},"rotulo":{"type":"string"}},"required":["de","para"]}}
+            },"required":["cartoes"]})),
     ];
+    if purpose == "ideia" {
+        v.push(def("propor_nome", "Sugere um nome para o livro. Só muda se a pessoa aceitar.",
+            json!({"type":"object","properties":{"nome":{"type":"string"}},"required":["nome"]})));
+    }
     if mode == "coautora" {
         v.push(def("propor_trecho", "Propõe um trecho de texto para o livro. Ele NÃO entra no texto: aparece como proposta para a pessoa aprovar.",
             json!({"type":"object","properties":{"texto":{"type":"string"}},"required":["texto"]})));
@@ -49,7 +64,7 @@ pub fn defs(mode: &str) -> Vec<ToolDef> {
 }
 
 fn out(result: impl Into<String>, note: impl Into<String>) -> ToolOutcome {
-    ToolOutcome { result: result.into(), note: note.into(), proposal: None }
+    ToolOutcome { result: result.into(), note: note.into(), proposal: None, map_proposal: None }
 }
 
 fn err(msg: impl std::fmt::Display) -> ToolOutcome {
@@ -164,7 +179,36 @@ pub fn run(c: &Connection, book_id: &str, mode: &str, current_scene_id: Option<&
                 }
                 let Some(text) = arg(&args, "texto") else { return Ok(err("falta 'texto'")) };
                 let p = ai::proposal_add(c, book_id, Some(conversation_id), current_scene_id, text, now)?;
-                ToolOutcome { result: "Proposta criada; a pessoa decide se entra no livro.".into(), note: String::new(), proposal: Some(p) }
+                ToolOutcome { result: "Proposta criada; a pessoa decide se entra no livro.".into(), note: String::new(), proposal: Some(p), map_proposal: None }
+            }
+            "ler_mapa" => {
+                let m = mapdb::map_get(c, book_id)?;
+                if m.cards.is_empty() {
+                    out("(mapa vazio)", "consultei o mapa")
+                } else {
+                    let mut lines: Vec<String> = m.cards.iter().map(|k| {
+                        let one: String = k.text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(200).collect();
+                        format!("- [{}] {}", k.id, one)
+                    }).collect();
+                    if !m.links.is_empty() {
+                        lines.push("Setas:".into());
+                        lines.extend(m.links.iter().map(|l| format!("{} → {}: {}", l.from_card, l.to_card, l.label)));
+                    }
+                    out(lines.join("\n"), "consultei o mapa")
+                }
+            }
+            "propor_cartoes" => match mapdb::proposal_add_cards(c, book_id, Some(conversation_id), &args, now) {
+                Ok(p) => ToolOutcome { result: "Sugestão criada; a pessoa decide o que entra no mapa.".into(), note: String::new(), proposal: None, map_proposal: Some(p) },
+                Err(crate::db::DbError::Invalid(m)) => err(m),
+                Err(e) => return Err(e),
+            },
+            "propor_nome" => {
+                if ai::conversation_get(c, conversation_id)?.purpose != "ideia" {
+                    return Ok(err("propor_nome só existe na conversa de desenvolver a ideia"));
+                }
+                let Some(nome) = arg(&args, "nome") else { return Ok(err("falta 'nome'")) };
+                let p = mapdb::proposal_add_name(c, book_id, Some(conversation_id), nome, now)?;
+                ToolOutcome { result: "Sugestão de nome criada; a pessoa decide.".into(), note: String::new(), proposal: None, map_proposal: Some(p) }
             }
             other => err(format!("ferramenta desconhecida: {other}")),
         })
@@ -185,8 +229,8 @@ mod tests {
 
     #[test]
     fn conselheira_has_no_propose_tool() {
-        assert!(!defs("conselheira").iter().any(|d| d.name == "propor_trecho"));
-        assert!(defs("coautora").iter().any(|d| d.name == "propor_trecho"));
+        assert!(!defs("conselheira", "livro").iter().any(|d| d.name == "propor_trecho"));
+        assert!(defs("coautora", "livro").iter().any(|d| d.name == "propor_trecho"));
     }
 
     #[test]
@@ -247,6 +291,74 @@ mod tests {
         assert_eq!(e.body, "Meu texto");
         assert_eq!(e.ai_notes.len(), 1);
         assert!(o.note.contains("Rafa"));
+    }
+
+    #[test]
+    fn map_tools_offered_in_both_modes_and_name_only_in_idea() {
+        for mode in ["conselheira", "coautora"] {
+            let names: Vec<String> = defs(mode, "livro").into_iter().map(|d| d.name).collect();
+            assert!(names.contains(&"ler_mapa".to_string()) && names.contains(&"propor_cartoes".to_string()));
+            assert!(!names.contains(&"propor_nome".to_string()));
+            assert!(defs(mode, "ideia").iter().any(|d| d.name == "propor_nome"));
+        }
+    }
+
+    #[test]
+    fn propor_cartoes_works_in_conselheira() {
+        let (_d, c) = test_conn();
+        let b = testkit::sample(&c, "conselheira");
+        let cv = ai::conversation_current(&c, &b.id, 1).unwrap();
+        let args = serde_json::json!({"cartoes":[{"ref":"a","texto":"Marina"},{"ref":"b","texto":"A carta"}],"setas":[{"de":"a","para":"b","rotulo":"escreve"}]});
+        let o = run(&c, &b.id, "conselheira", None, &cv.id, &call("propor_cartoes", args), 1);
+        let p = o.map_proposal.expect("proposta");
+        assert_eq!(p.kind, "cartoes");
+        assert_eq!(crate::db::map::proposals_pending(&c, &b.id).unwrap().len(), 1);
+        assert!(crate::db::map::map_get(&c, &b.id).unwrap().cards.is_empty(), "nada entra sem aprovação");
+    }
+
+    #[test]
+    fn propor_cartoes_rejects_unknown_or_foreign_ids() {
+        let (_d, c) = test_conn();
+        let b = testkit::sample(&c, "conselheira");
+        let other = crate::db::books::book_create(&c, "Outro", "conselheira", 0).unwrap();
+        let foreign = crate::db::map::card_create(&c, &other.id, "x", "papel", 0.0, 0.0, 1).unwrap();
+        let cv = ai::conversation_current(&c, &b.id, 1).unwrap();
+        for to in ["nao-existe", foreign.id.as_str()] {
+            let args = serde_json::json!({"cartoes":[{"ref":"a","texto":"Marina"}],"setas":[{"de":"a","para":to}]});
+            let o = run(&c, &b.id, "conselheira", None, &cv.id, &call("propor_cartoes", args), 1);
+            assert!(o.result.starts_with("Erro"), "{}", o.result);
+            assert!(o.map_proposal.is_none());
+        }
+        assert!(crate::db::map::proposals_pending(&c, &b.id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn propor_nome_only_in_idea_conversation() {
+        let (_d, c) = test_conn();
+        let b = testkit::sample(&c, "conselheira");
+        let cv = ai::conversation_current(&c, &b.id, 1).unwrap();
+        let o = run(&c, &b.id, "conselheira", None, &cv.id, &call("propor_nome", serde_json::json!({"nome":"O Farol"})), 1);
+        assert!(o.result.starts_with("Erro"));
+        let idea = ai::conversation_new_idea(&c, &b.id, 2).unwrap();
+        let o = run(&c, &b.id, "conselheira", None, &idea.id, &call("propor_nome", serde_json::json!({"nome":"O Farol"})), 3);
+        assert_eq!(o.map_proposal.unwrap().kind, "nome");
+    }
+
+    #[test]
+    fn ler_mapa_lists_cards_and_links() {
+        let (_d, c) = test_conn();
+        let b = testkit::sample(&c, "conselheira");
+        let cv = ai::conversation_current(&c, &b.id, 1).unwrap();
+        let o = run(&c, &b.id, "conselheira", None, &cv.id, &call("ler_mapa", serde_json::json!({})), 1);
+        assert!(o.result.contains("(mapa vazio)"));
+        let a = crate::db::map::card_create(&c, &b.id, "Marina\nfaroleira", "papel", 0.0, 0.0, 1).unwrap();
+        let z = crate::db::map::card_create(&c, &b.id, "A carta", "papel", 0.0, 0.0, 1).unwrap();
+        let l = crate::db::map::link_create(&c, &b.id, &a.id, &z.id).unwrap();
+        crate::db::map::link_set_label(&c, &l.id, "escreve").unwrap();
+        let o = run(&c, &b.id, "conselheira", None, &cv.id, &call("ler_mapa", serde_json::json!({})), 1);
+        assert!(o.result.contains(&format!("- [{}] Marina faroleira", a.id)), "{}", o.result);
+        assert!(o.result.contains(&format!("{} → {}: escreve", a.id, z.id)));
+        assert_eq!(o.note, "consultei o mapa");
     }
 
     #[test]

@@ -114,6 +114,9 @@ pub fn run() {
             commands::map_link_label,
             commands::map_link_delete,
             commands::map_card_to_bible,
+            commands::map_proposals_pending,
+            commands::map_proposal_accept,
+            commands::map_proposal_discard,
             exit_app,
         ])
         .build(tauri::generate_context!())

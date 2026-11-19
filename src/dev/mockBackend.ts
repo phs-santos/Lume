@@ -185,6 +185,12 @@ Object.assign(handlers, {
     const answer = "Pelo que li, o Rafa ainda não sabe do bug nessa cena — ele só descobre mais adiante, no elevador.";
     for (const w of answer.split(/(?<= )/)) { await new Promise((r) => setTimeout(r, 25)); send(onEvent, { type: "delta", text: w }); }
     const m = addMsg(c, "assistant", answer);
+    if (c.purpose === "ideia" || /mapa|cart/i.test(text)) {
+      const payload = { cartoes: [{ ref: "a", texto: "Marina\nfaroleira, 30 anos" }, { ref: "b", texto: "A carta que some" }, { ref: "c", texto: "O irmão escondeu a carta" }], setas: [{ de: "a", para: "b", rotulo: "procura" }, { de: "c", para: "b", rotulo: "por quê?" }] };
+      const p = { id: id(), book_id: bookId, conversation_id: c.id, kind: "cartoes", payload_json: JSON.stringify(payload), status: "pendente", created_at: Date.now() };
+      map.props.push(p); send(onEvent, { type: "map_proposal", proposal: p });
+      if (c.purpose === "ideia") { const n = { id: id(), book_id: bookId, conversation_id: c.id, kind: "nome", payload_json: JSON.stringify({ nome: "O Farol de Itaipava" }), status: "pendente", created_at: Date.now() }; map.props.push(n); send(onEvent, { type: "map_proposal", proposal: n }); }
+    }
     if (!ai.bible.length) ai.bible.push({ id: id(), book_id: bookId, kind: "personagem", name: "Rafa", aliases: ["Rafael"], body: "Programador, escreve de madrugada.", ai_notes: [], story_order: null, source_scene_id: db.scenes[0]?.id ?? null, edited_by_user: false, updated_at: Date.now() });
     send(onEvent, { type: "done", message_id: m.id, input_tokens: 5200, output_tokens: 140, cost: 0.0118 });
   },
@@ -207,7 +213,7 @@ Object.assign(handlers, {
 });
 
 // mapa de ideias (simulado)
-const map = { cards: [] as Row[], links: [] as Row[] };
+const map = { cards: [] as Row[], links: [] as Row[], props: [] as Row[] };
 Object.assign(handlers, {
   map_get: ({ bookId }: any) => ({ cards: map.cards.filter((c) => c.book_id === bookId), links: map.links.filter((l) => l.book_id === bookId) }),
   map_card_create: ({ bookId, text, color, x, y }: any) => { const c = { id: id(), book_id: bookId, text, color, x, y, bible_entry_id: null, created_at: Date.now(), updated_at: Date.now() }; map.cards.push(c); return c; },
@@ -230,6 +236,25 @@ Object.assign(handlers, {
     const e = { id: id(), book_id: c.book_id, kind, name: name.trim(), aliases: [], body: rest.join("\n").trim(), ai_notes: [], story_order: null, source_scene_id: null, edited_by_user: true, updated_at: Date.now() };
     ai.bible.push(e); c.bible_entry_id = e.id; return e;
   },
+  map_proposals_pending: ({ bookId }: any) => map.props.filter((p) => p.book_id === bookId && p.status === "pendente"),
+  map_proposal_accept: ({ id: pid, refs }: any) => {
+    const p = map.props.find((x) => x.id === pid)!;
+    if (p.status !== "pendente") throw "proposta já resolvida";
+    const pl = JSON.parse(p.payload_json);
+    p.status = "aceita";
+    if (p.kind === "nome") { handlers.book_rename({ id: p.book_id, title: pl.nome }); return []; }
+    const mine = map.cards.filter((c) => c.book_id === p.book_id);
+    const ox = mine.length ? Math.max(...mine.map((c) => c.x)) + 320 : 0, oy = mine.length ? Math.min(...mine.map((c) => c.y)) : 0;
+    const byRef: Record<string, string> = {};
+    const made = pl.cartoes.filter((k: any) => refs.includes(k.ref)).map((k: any, i: number) => {
+      const c = handlers.map_card_create({ bookId: p.book_id, text: k.texto, color: "papel", x: ox + (i % 3) * 280, y: oy + Math.floor(i / 3) * 180 });
+      byRef[k.ref] = c.id; return c;
+    });
+    const has = (x: string) => byRef[x] ?? (map.cards.some((c) => c.id === x) ? x : null);
+    for (const l of pl.setas) { const a = has(l.de), z = has(l.para); if (a && z) handlers.map_link_label({ id: handlers.map_link_create({ bookId: p.book_id, from: a, to: z }).id, label: l.rotulo ?? "" }); }
+    return made;
+  },
+  map_proposal_discard: ({ id: pid }: any) => void (map.props.find((x) => x.id === pid)!.status = "descartada"),
 });
 
 // imagens e ficha do livro (simuladas)

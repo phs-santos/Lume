@@ -4,6 +4,7 @@ use crate::ai::context::{self, needs_fold, WINDOW};
 use crate::ai::provider::{ChatModel, Msg, Usage};
 use crate::ai::{pricing, tools};
 use crate::db::ai::{self, Proposal};
+use crate::db::map::MapProposal;
 use crate::db::settings::setting_get;
 use crate::db::{books, DbError};
 use crate::state::SharedDb;
@@ -20,6 +21,7 @@ pub enum ChatEvent {
     Delta { text: String },
     Note { text: String },
     Proposal { proposal: Proposal },
+    MapProposal { proposal: MapProposal },
     /// fim da resposta, com o gasto dela (custo estimado; None se o modelo não está na tabela)
     Done { message_id: String, input_tokens: i64, output_tokens: i64, cost: Option<f64> },
     Error { message: String },
@@ -116,7 +118,7 @@ fn answer(db: &SharedDb, model: &dyn ChatModel, book_id: &str, scene_id: Option<
         emit(ChatEvent::Error { message: message.clone() });
         return Err(message);
     }
-    let (cfg, mode) = with(db, |c| Ok((AiConfig::load(c)?, books::book_outline(c, book_id)?.book.ai_mode)))?;
+    let (cfg, mode, purpose) = with(db, |c| Ok((AiConfig::load(c)?, books::book_outline(c, book_id)?.book.ai_mode, ai::conversation_get(c, conv_id)?.purpose)))?;
     let mut extra: Vec<Msg> = vec![];
     let (mut tin, mut tout, mut cost) = (0i64, 0i64, Some(0f64));
     let mut used = 0usize;
@@ -124,7 +126,7 @@ fn answer(db: &SharedDb, model: &dyn ChatModel, book_id: &str, scene_id: Option<
     loop {
         let base = with(db, |c| context::build(c, book_id, scene_id, conv_id))?;
         let msgs: Vec<Msg> = base.into_iter().chain(extra.iter().cloned()).collect();
-        let offered = if used >= MAX_TOOL_CALLS { vec![] } else { tools::defs(&mode) };
+        let offered = if used >= MAX_TOOL_CALLS { vec![] } else { tools::defs(&mode, &purpose) };
         // o lock do banco NÃO fica preso durante a chamada de rede
         let turn = match model.complete(&cfg.chat_model, &msgs, &offered, &mut |d| emit(ChatEvent::Delta { text: d.to_string() })) {
             Ok(t) => t,
@@ -164,6 +166,9 @@ fn answer(db: &SharedDb, model: &dyn ChatModel, book_id: &str, scene_id: Option<
             }
             if let Some(p) = o.proposal.clone() {
                 emit(ChatEvent::Proposal { proposal: p });
+            }
+            if let Some(p) = o.map_proposal.clone() {
+                emit(ChatEvent::MapProposal { proposal: p });
             }
             extra.push(Msg::tool(&call.id, &o.result));
         }
@@ -318,6 +323,16 @@ mod tests {
         let mut ev = vec![];
         send(&db, &m, &b.id, Some(&b.scenes[0]), "escreve algo", &mut |e| ev.push(e), &now).unwrap();
         assert!(ev.iter().any(|e| matches!(e, ChatEvent::Proposal { proposal } if proposal.text == "Rafa sorriu.")));
+    }
+
+    #[test]
+    fn map_proposal_emits_event() {
+        let (_d, db, b) = setup("conselheira");
+        let args = serde_json::json!({"cartoes":[{"ref":"a","texto":"Marina"}]});
+        let m = FakeModel::new(vec![tool_turn("propor_cartoes", args), text_turn("Sugeri um cartão.")]);
+        let mut ev = vec![];
+        send(&db, &m, &b.id, None, "organiza", &mut |e| ev.push(e), &now).unwrap();
+        assert!(ev.iter().any(|e| matches!(e, ChatEvent::MapProposal { proposal } if proposal.kind == "cartoes")));
     }
 
     #[test]

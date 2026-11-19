@@ -264,4 +264,21 @@ describe("ChatView", () => {
     expect(api.aiSend).toHaveBeenCalledWith("b", null, "Uma faroleira que recebe cartas", expect.any(Function));
     expect(bubbles(el)).toContain("Uma faroleira que recebe cartas");
   });
+
+  it("startIdea right after mount is not wiped by the initial load", async () => {
+    let release!: () => void;
+    vi.mocked(api.aiConversation).mockImplementationOnce(() => new Promise((r) => { release = () => r({ conversation: conv("cv"), messages: [msg("user", "velha")] }); }));
+    vi.mocked(api.aiSend).mockImplementationOnce(async () => {});
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    app = createApp(ChatView, { bookId: "b", sceneId: null, mode: "conselheira" });
+    const vm = app.mount(el) as unknown as { startIdea: (t: string) => Promise<void> };
+    await flush();
+    const started = vm.startIdea("Minha ideia");
+    await flush();
+    release();
+    await started;
+    await flush();
+    expect(bubbles(el)).toEqual(["Minha ideia"]);
+  });
 });

@@ -15,6 +15,8 @@ import EditorScreen from "./features/editor/EditorScreen.vue";
 type Screen = "loading" | "missing" | "create" | "unlock" | "recover" | "library" | "editor";
 const screen = ref<Screen>("loading");
 const bookId = ref("");
+/** Livro criado pela opção "Tenho uma ideia": abre no mapa e já manda a ideia para a IA. */
+const bookIdea = ref<string | undefined>();
 
 async function refresh() {
   const s = await vaultStatus();
@@ -34,8 +36,9 @@ watch(screen, (s) => {
   if (s !== "editor" && s !== "library") clearImageUrls();
 });
 
-function openBook(id: string) {
+function openBook(id: string, opts?: { idea?: string }) {
   bookId.value = id;
+  bookIdea.value = opts?.idea;
   screen.value = "editor";
 }
 
@@ -54,5 +57,11 @@ onMounted(async () => {
   <Unlock v-else-if="screen === 'unlock'" @done="screen = 'library'" @forgot="screen = 'recover'" @new-profile="screen = 'create'" />
   <Recover v-else-if="screen === 'recover'" @done="screen = 'library'" @back="screen = 'unlock'" />
   <Library v-else-if="screen === 'library'" @open="openBook" @locked="screen = 'unlock'" />
-  <EditorScreen v-else-if="screen === 'editor'" :book-id="bookId" @close="screen = 'library'" />
+  <EditorScreen
+    v-else-if="screen === 'editor'"
+    :book-id="bookId"
+    :initial-view="bookIdea ? 'mapa' : 'texto'"
+    :idea="bookIdea"
+    @close="(screen = 'library'), (bookIdea = undefined)"
+  />
 </template>

@@ -67,7 +67,7 @@ async function setAssistant(open: boolean) {
 }
 const toggleAssistant = () => setAssistant(!assistant.value);
 
-const assistantPanel = ref<{ focusInput: () => void; newConversation: () => void; toggleTab: () => void; reloadBible: () => Promise<void> | undefined; $el: HTMLElement } | null>(null);
+const assistantPanel = ref<{ focusInput: () => void; newConversation: () => void; toggleTab: () => void; startIdea: (t: string) => Promise<void>; reloadBible: () => Promise<void> | undefined; $el: HTMLElement } | null>(null);
 
 /** Atalhos do assistente: abrem o painel se estiver fechado. */
 async function withAssistant(f: (p: NonNullable<typeof assistantPanel.value>) => void) {
@@ -496,6 +496,11 @@ onMounted(async () => {
     await reloadOutline();
     const first = outline.value?.chapters.flatMap((c) => c.scenes)[0];
     if (first) scene.value = await sceneGet(first.id);
+    if (props.idea) {
+      // livro novo a partir de uma ideia: sem os primeiros passos, assistente aberto conversando
+      panel.value = "none";
+      await withAssistant((p) => p.startIdea(props.idea!));
+    }
   } catch (e) {
     error.value = errorMessage(e);
   }

@@ -78,7 +78,9 @@ async function scrollDown() {
   if (el) el.scrollTop = el.scrollHeight;
 }
 
-onMounted(async () => {
+let ready: Promise<void> = Promise.resolve();
+onMounted(() => (ready = mountLoad()));
+async function mountLoad() {
   takeDraft(props.draft);
   try {
     hasKey.value = await aiKeyStatus();
@@ -90,7 +92,7 @@ onMounted(async () => {
   } catch (e) {
     error.value = errorMessage(e);
   }
-});
+}
 
 async function saveKey() {
   try {
@@ -243,6 +245,7 @@ function renamed(id: string) {
 
 /** Começa a conversa de desenvolver a ideia do livro, com o texto da pessoa como primeira mensagem. */
 async function startIdea(text: string) {
+  await ready; // a conversa anterior termina de carregar antes, para não sobrescrever esta
   showHistory.value = false;
   try {
     load(await aiConversationNewIdea(props.bookId));

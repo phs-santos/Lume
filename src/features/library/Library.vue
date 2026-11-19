@@ -3,17 +3,23 @@ import { IconBookUpload, IconLock, IconPlus, IconX } from "@tabler/icons-vue";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { computed, nextTick, onMounted, ref } from "vue";
 import DeskScene from "../../components/DeskScene.vue";
-import { bookCreate, bookImportEpub, bookList, vaultLock } from "../../lib/api";
+import { aiKeyStatus, bookCreate, bookImportEpub, bookList, vaultLock } from "../../lib/api";
 import { coverColor } from "../../lib/coverColor";
 import { errorMessage } from "../../lib/errors";
 import { greeting, timeOfDay } from "../../lib/timeOfDay";
 import type { AiMode, Book } from "../../lib/types";
 
-const emit = defineEmits<{ open: [bookId: string]; locked: [] }>();
+const emit = defineEmits<{ open: [bookId: string, opts?: { idea?: string }]; locked: [] }>();
 const books = ref<Book[]>([]);
 const creating = ref(false);
 const title = ref("");
 const mode = ref<AiMode>("conselheira");
+/** "escrever": abre o livro na folha; "ideia": abre no mapa, conversando com a IA sobre a ideia. */
+const start = ref<"escrever" | "ideia">("escrever");
+const idea = ref("");
+const ideaBox = ref<HTMLTextAreaElement | null>(null);
+const hasKey = ref(false);
+const canCreate = computed(() => start.value === "escrever" || !!idea.value.trim());
 const error = ref("");
 const titleInput = ref<HTMLInputElement | null>(null);
 const forced = import.meta.env.DEV ? new URLSearchParams(location.search).get("hora") : null;
@@ -35,16 +41,25 @@ async function load() {
 async function startCreating() {
   title.value = "";
   mode.value = "conselheira";
+  start.value = "escrever";
+  idea.value = "";
   creating.value = true;
+  aiKeyStatus().then((k) => (hasKey.value = k)).catch(() => (hasKey.value = false));
   await nextTick();
   titleInput.value?.focus();
 }
 
+async function chooseIdea() {
+  start.value = "ideia";
+  await nextTick();
+  ideaBox.value?.focus();
+}
+
 async function create() {
-  if (!title.value.trim()) return;
+  if (!canCreate.value) return;
   try {
     const b = await bookCreate(title.value.trim(), mode.value);
-    emit("open", b.id);
+    emit("open", b.id, start.value === "ideia" ? { idea: idea.value.trim() } : undefined);
   } catch (e) {
     error.value = errorMessage(e);
   }
@@ -95,6 +110,7 @@ onMounted(load);
         <li v-for="b in books" :key="b.id">
           <button class="cover" :style="{ '--cover': coverColor(b.id) }" @click="emit('open', b.id)">
             <span class="cover-title">{{ b.title }}</span>
+            <span v-if="b.title_provisional" class="cover-tag">nome provisório</span>
             <span class="cover-foot">
               <span>{{ b.ai_mode === "coautora" ? "Coautora" : "Conselheira" }}</span>
               <span>{{ year(b.created_at) }}</span>
@@ -123,8 +139,38 @@ onMounted(load);
           <h2 id="new-book-title">Novo livro</h2>
           <button type="button" class="link icon" aria-label="Fechar" @click="creating = false"><IconX :size="18" /></button>
         </div>
-        <label class="field"><span>Título</span><input ref="titleInput" v-model="title" /></label>
+        <label class="field name">
+          <span>Nome do livro</span>
+          <input ref="titleInput" v-model="title" placeholder="Livro sem nome" />
+          <small>Pode ser um nome provisório. Dá para trocar depois.</small>
+        </label>
         <fieldset class="modes">
+          <legend>Como você quer começar?</legend>
+          <label :class="['mode-opt', { on: start === 'escrever' }]">
+            <input v-model="start" type="radio" name="start" value="escrever" />
+            <span><strong>Escrever direto</strong><small>Abre a primeira cena, pronta para escrever.</small></span>
+          </label>
+          <label :class="['mode-opt', { on: start === 'ideia', off: !hasKey }]">
+            <input :checked="start === 'ideia'" type="radio" name="start" value="ideia" :disabled="!hasKey" @change="chooseIdea" />
+            <span>
+              <strong>Tenho uma ideia e quero desenvolver com a IA</strong>
+              <small v-if="hasKey">A IA conversa com você e monta um mapa de ideias.</small>
+              <small v-else>Para usar, configure a IA em Ajustes do assistente.</small>
+            </span>
+          </label>
+          <textarea
+            v-if="start === 'ideia'"
+            ref="ideaBox"
+            v-model="idea"
+            class="idea"
+            rows="3"
+            aria-label="A ideia do livro"
+            placeholder="Conte a ideia do jeito que vier…"
+            @keydown.enter.meta.prevent="create"
+            @keydown.enter.ctrl.prevent="create"
+          />
+        </fieldset>
+        <fieldset class="modes ai">
           <legend>Como a IA vai ajudar neste livro</legend>
           <label v-for="m in modes" :key="m.value" :class="['mode-opt', { on: mode === m.value }]">
             <input v-model="mode" type="radio" name="mode" :value="m.value" />
@@ -132,7 +178,7 @@ onMounted(load);
           </label>
         </fieldset>
         <p class="mode-later">Dá para trocar depois, no painel do assistente ou em Ajustes.</p>
-        <button class="btn wide" :disabled="!title.trim()">Criar livro</button>
+        <button class="btn wide" :disabled="!canCreate">Criar livro</button>
       </form>
     </div>
   </div>
@@ -216,7 +262,9 @@ onMounted(load);
   z-index: 20;
 }
 .dialog {
-  width: min(28rem, 100%);
+  width: min(30rem, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
   padding: 1.5rem 1.75rem 1.75rem;
   background: var(--paper);
   border-radius: 14px;
@@ -241,4 +289,21 @@ onMounted(load);
 .mode-opt input { accent-color: var(--ribbon); margin-top: 0.25rem; }
 .mode-opt strong { display: block; font-weight: 500; }
 .mode-opt small { color: var(--note); font-size: 0.82rem; }
+.mode-opt.off { cursor: default; opacity: 0.6; }
+.modes.ai { grid-template-columns: 1fr 1fr; }
+.modes.ai legend { grid-column: 1 / -1; }
+.modes.ai .mode-opt { padding: 0.6rem 0.7rem; gap: 0.5rem; }
+.name small { display: block; margin-top: 0.35rem; color: var(--note); font-size: 0.8rem; }
+.name input::placeholder { color: color-mix(in srgb, var(--note) 70%, transparent); }
+.idea {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: color-mix(in srgb, #fff 70%, var(--paper));
+  font: 0.95rem/1.5 var(--font-serif);
+  resize: vertical;
+}
+.idea:focus { outline: 2px solid var(--ribbon); outline-offset: 1px; }
+.cover-tag { align-self: flex-start; margin: 0.5rem 0 auto; padding: 0.05rem 0.5rem; border: 1px solid currentColor; border-radius: 999px; font: 0.7rem/1.5 var(--font-ui); opacity: 0.7; }
 </style>

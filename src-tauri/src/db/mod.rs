@@ -8,6 +8,7 @@ pub mod ai;
 pub mod books;
 pub mod images;
 pub mod inbox;
+pub mod map;
 pub mod scenes;
 pub mod settings;
 
@@ -194,6 +195,37 @@ ALTER TABLE books ADD COLUMN synopsis TEXT;
 ALTER TABLE books ADD COLUMN dedication TEXT;
 ALTER TABLE books ADD COLUMN cover_image_id TEXT;
 ALTER TABLE books ADD COLUMN back_image_id TEXT;
+"#, r#"
+ALTER TABLE books ADD COLUMN title_provisional INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ai_conversations ADD COLUMN purpose TEXT NOT NULL DEFAULT 'livro' CHECK(purpose IN('livro','ideia'));
+CREATE TABLE map_cards(
+  id TEXT PRIMARY KEY,
+  book_id TEXT NOT NULL REFERENCES books(id),
+  text TEXT NOT NULL,
+  color TEXT NOT NULL DEFAULT 'papel',
+  x REAL NOT NULL,
+  y REAL NOT NULL,
+  bible_entry_id TEXT REFERENCES bible_entries(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX map_cards_book ON map_cards(book_id);
+CREATE TABLE map_links(
+  id TEXT PRIMARY KEY,
+  book_id TEXT NOT NULL REFERENCES books(id),
+  from_card TEXT NOT NULL REFERENCES map_cards(id) ON DELETE CASCADE,
+  to_card TEXT NOT NULL REFERENCES map_cards(id) ON DELETE CASCADE,
+  label TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE map_proposals(
+  id TEXT PRIMARY KEY,
+  book_id TEXT NOT NULL REFERENCES books(id),
+  conversation_id TEXT REFERENCES ai_conversations(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL CHECK(kind IN('cartoes','nome')),
+  payload_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN('pendente','aceita','descartada')),
+  created_at INTEGER NOT NULL
+);
 "#];
 
 pub fn open(path: &Path, key: &MasterKey) -> Result<Connection, DbError> {
@@ -296,6 +328,27 @@ mod tests {
         assert_eq!(meta, images::BookMeta::default());
         let id = images::image_add(&c, "b1", "image/png", &[1], 1, 1, 1).unwrap();
         assert!(images::image_get(&c, &id).is_ok());
+    }
+
+    #[test]
+    fn migration_v6_runs_on_a_v5_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("livro.db");
+        {
+            let c = Connection::open(&p).unwrap();
+            let hex: String = key(7).0.iter().map(|b| format!("{b:02x}")).collect();
+            let v5: String = MIGRATIONS[..5].concat();
+            c.execute_batch(&format!("PRAGMA key = \"x'{hex}'\"; {v5} PRAGMA user_version = 5;")).unwrap();
+            insert_book(&c, "Antigo");
+            c.execute("INSERT INTO ai_conversations(id,book_id,title,created_at,updated_at) VALUES('c1','b1','Conversa',0,0)", []).unwrap();
+        }
+        let c = open(&p, &key(7)).unwrap();
+        let v: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v as usize, MIGRATIONS.len());
+        let prov: i64 = c.query_row("SELECT title_provisional FROM books WHERE id='b1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(prov, 0);
+        assert_eq!(ai::conversation_get(&c, "c1").unwrap().purpose, "livro");
+        assert!(map::map_get(&c, "b1").unwrap().cards.is_empty());
     }
 
     #[test]

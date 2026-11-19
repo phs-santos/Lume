@@ -38,6 +38,8 @@ pub struct Conversation {
     pub closed: bool,
     pub created_at: i64,
     pub updated_at: i64,
+    /// "livro" (conversa comum) ou "ideia" (desenvolvendo a ideia de um livro novo).
+    pub purpose: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -203,6 +205,17 @@ pub fn bible_upsert_ai(
     }
 }
 
+/// Ficha criada pela pessoa (por exemplo, a partir de um cartão do mapa).
+pub fn bible_create_user(c: &Connection, book_id: &str, kind: &str, name: &str, body: &str, now: i64) -> Result<BibleEntry, DbError> {
+    check_kind(kind)?;
+    let id = new_id();
+    c.execute(
+        "INSERT INTO bible_entries(id,book_id,kind,name,body,edited_by_user,updated_at) VALUES(?1,?2,?3,?4,?5,1,?6)",
+        params![id, book_id, kind, name.trim(), body.trim(), now],
+    )?;
+    bible_get(c, &id)
+}
+
 /// Edição pela pessoa. A partir daqui a IA não reescreve mais o texto da ficha.
 pub fn bible_update_user(c: &Connection, id: &str, name: &str, aliases: &[String], body: &str, story_order: Option<i64>, now: i64) -> Result<BibleEntry, DbError> {
     if name.trim().is_empty() {
@@ -272,7 +285,7 @@ pub fn digest_put(c: &Connection, scene_id: &str, hash: &str, summary: &str, now
     Ok(())
 }
 
-const CONV_COLS: &str = "id,book_id,title,rolling_summary,folded_count,closed,created_at,updated_at";
+const CONV_COLS: &str = "id,book_id,title,rolling_summary,folded_count,closed,created_at,updated_at,purpose";
 
 fn conv_row(r: &rusqlite::Row) -> rusqlite::Result<Conversation> {
     Ok(Conversation {
@@ -284,6 +297,7 @@ fn conv_row(r: &rusqlite::Row) -> rusqlite::Result<Conversation> {
         closed: r.get::<_, i64>(5)? != 0,
         created_at: r.get(6)?,
         updated_at: r.get(7)?,
+        purpose: r.get(8)?,
     })
 }
 
@@ -319,6 +333,13 @@ pub fn conversation_current(c: &Connection, book_id: &str, now: i64) -> Result<C
 pub fn conversation_new(c: &Connection, book_id: &str, now: i64) -> Result<Conversation, DbError> {
     c.execute("UPDATE ai_conversations SET closed=1 WHERE book_id=?1", [book_id])?;
     create_conversation(c, book_id, now)
+}
+
+/// Fecha a conversa atual e começa a de desenvolver a ideia do livro.
+pub fn conversation_new_idea(c: &Connection, book_id: &str, now: i64) -> Result<Conversation, DbError> {
+    let cv = conversation_new(c, book_id, now)?;
+    c.execute("UPDATE ai_conversations SET purpose='ideia', title='Desenvolvendo a ideia' WHERE id=?1", [&cv.id])?;
+    conversation_get(c, &cv.id)
 }
 
 pub fn conversation_list(c: &Connection, book_id: &str) -> Result<Vec<Conversation>, DbError> {
@@ -508,6 +529,18 @@ mod tests {
         scenes::scene_delete(&c, &s).unwrap();
         assert_eq!(bible_list(&c, &b).unwrap()[0].source_scene_id, None);
         assert_eq!(digest_get(&c, &s).unwrap(), None);
+    }
+
+    #[test]
+    fn conversation_new_idea_has_purpose_and_title() {
+        let (_d, c) = test_conn();
+        let (b, _) = book(&c);
+        let old = conversation_current(&c, &b, 1).unwrap();
+        assert_eq!(old.purpose, "livro");
+        let cv = conversation_new_idea(&c, &b, 2).unwrap();
+        assert_eq!((cv.purpose.as_str(), cv.title.as_str()), ("ideia", "Desenvolvendo a ideia"));
+        assert!(conversation_get(&c, &old.id).unwrap().closed);
+        assert_eq!(conversation_current(&c, &b, 3).unwrap().id, cv.id);
     }
 
     #[test]

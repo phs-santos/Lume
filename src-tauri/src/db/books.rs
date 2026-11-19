@@ -8,6 +8,8 @@ pub struct Book {
     pub title: String,
     pub ai_mode: String,
     pub created_at: i64,
+    /// O nome ainda é provisório (o livro nasceu sem nome).
+    pub title_provisional: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -54,7 +56,7 @@ fn affected(n: usize) -> Result<(), DbError> {
 }
 
 fn book_row(r: &rusqlite::Row) -> rusqlite::Result<Book> {
-    Ok(Book { id: r.get(0)?, title: r.get(1)?, ai_mode: r.get(2)?, created_at: r.get(3)? })
+    Ok(Book { id: r.get(0)?, title: r.get(1)?, ai_mode: r.get(2)?, created_at: r.get(3)?, title_provisional: r.get::<_, i64>(4)? != 0 })
 }
 
 fn chapter_row(r: &rusqlite::Row) -> rusqlite::Result<Chapter> {
@@ -62,18 +64,25 @@ fn chapter_row(r: &rusqlite::Row) -> rusqlite::Result<Chapter> {
 }
 
 pub fn book_list(c: &Connection) -> Result<Vec<Book>, DbError> {
-    let mut st = c.prepare("SELECT id,title,ai_mode,created_at FROM books ORDER BY created_at, title")?;
+    let mut st = c.prepare("SELECT id,title,ai_mode,created_at,title_provisional FROM books ORDER BY created_at, title")?;
     let v = st.query_map([], book_row)?.collect::<Result<_, _>>()?;
     Ok(v)
 }
 
+/// Nome de quem começa sem nome.
+pub const UNTITLED: &str = "Livro sem nome";
+
+/// Nome vazio vira "Livro sem nome", marcado como provisório.
 pub fn book_create(c: &Connection, title: &str, ai_mode: &str, now: i64) -> Result<Book, DbError> {
     check_mode(ai_mode)?;
     let tx = super::Atomic::begin(c)?;
-    let b = Book { id: new_id(), title: title.into(), ai_mode: ai_mode.into(), created_at: now };
+    let title = title.trim();
+    let provisional = title.is_empty();
+    let title = if provisional { UNTITLED } else { title };
+    let b = Book { id: new_id(), title: title.into(), ai_mode: ai_mode.into(), created_at: now, title_provisional: provisional };
     c.execute(
-        "INSERT INTO books(id,title,ai_mode,created_at) VALUES(?1,?2,?3,?4)",
-        params![b.id, b.title, b.ai_mode, b.created_at],
+        "INSERT INTO books(id,title,ai_mode,created_at,title_provisional) VALUES(?1,?2,?3,?4,?5)",
+        params![b.id, b.title, b.ai_mode, b.created_at, provisional as i64],
     )?;
     let ch = chapter_create(c, &b.id, "Capítulo 1", None)?;
     super::scenes::scene_create(c, &ch.id, "Cena 1", None, now)?;
@@ -82,7 +91,7 @@ pub fn book_create(c: &Connection, title: &str, ai_mode: &str, now: i64) -> Resu
 }
 
 pub fn book_rename(c: &Connection, id: &str, title: &str) -> Result<(), DbError> {
-    affected(c.execute("UPDATE books SET title=?1 WHERE id=?2", params![title, id])?)
+    affected(c.execute("UPDATE books SET title=?1, title_provisional=0 WHERE id=?2", params![title, id])?)
 }
 
 pub fn book_set_mode(c: &Connection, id: &str, ai_mode: &str) -> Result<(), DbError> {
@@ -92,7 +101,7 @@ pub fn book_set_mode(c: &Connection, id: &str, ai_mode: &str) -> Result<(), DbEr
 
 pub fn book_outline(c: &Connection, book_id: &str) -> Result<Outline, DbError> {
     let book = c
-        .query_row("SELECT id,title,ai_mode,created_at FROM books WHERE id=?1", [book_id], book_row)
+        .query_row("SELECT id,title,ai_mode,created_at,title_provisional FROM books WHERE id=?1", [book_id], book_row)
         .optional()?
         .ok_or(DbError::NotFound)?;
     let mut st = c.prepare("SELECT id,book_id,title,position FROM chapters WHERE book_id=?1 ORDER BY position")?;
@@ -165,4 +174,31 @@ pub fn chapter_delete(c: &Connection, id: &str) -> Result<(), DbError> {
     write_positions(c, "chapters", &ordered_ids(c, "chapters", "book_id", &book)?)?;
     tx.commit()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_conn;
+
+    #[test]
+    fn blank_title_becomes_provisional() {
+        let (_d, c) = test_conn();
+        let b = book_create(&c, "   ", "conselheira", 0).unwrap();
+        assert_eq!(b.title, "Livro sem nome");
+        assert!(b.title_provisional);
+        assert!(book_list(&c).unwrap()[0].title_provisional);
+        book_rename(&c, &b.id, "O Farol").unwrap();
+        let o = book_outline(&c, &b.id).unwrap();
+        assert_eq!(o.book.title, "O Farol");
+        assert!(!o.book.title_provisional);
+    }
+
+    #[test]
+    fn named_book_is_not_provisional() {
+        let (_d, c) = test_conn();
+        let b = book_create(&c, " O Farol ", "coautora", 0).unwrap();
+        assert_eq!(b.title, "O Farol");
+        assert!(!b.title_provisional);
+    }
 }

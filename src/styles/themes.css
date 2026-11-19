@@ -17,6 +17,12 @@
   --wood-top: #8f6c52;  /* mesa de madeira em volta da folha */
   --wood-bottom: #6f5240;
   --sheet: #fbfbfc;     /* a folha em que se escreve */
+  /* cartões do mapa de ideias */
+  --map-papel: #fbfbfc;
+  --map-amarelo: #f8efc8;
+  --map-verde: #dcecd9;
+  --map-azul: #dbe6f4;
+  --map-rosa: #f5dde3;
   --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Courier Prime", "Courier New", monospace;
   --font-serif: "Literata", Georgia, serif;
@@ -36,6 +42,11 @@
   --wood-top: #2e231d;
   --wood-bottom: #1d1612;
   --sheet: #1f2126;
+  --map-papel: #262930;
+  --map-amarelo: #3a3424;
+  --map-verde: #24332a;
+  --map-azul: #232f3e;
+  --map-rosa: #3a262d;
   color-scheme: dark;
 }
 

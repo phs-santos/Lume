@@ -20,6 +20,7 @@ describe("matchShortcut no Mac (Cmd)", () => {
   it("Cmd+Shift+L troca claro/escuro", () => expect(matchShortcut(k("L", { meta: true, shift: true }), true)).toBe("toggleTheme"));
   it("Cmd+/ abre a lista de atalhos", () => expect(matchShortcut(k("/", { meta: true }), true)).toBe("help"));
   it("Cmd+Shift+I abre as ideias", () => expect(matchShortcut(k("I", { meta: true, shift: true }), true)).toBe("ideas"));
+  it("Cmd+Shift+M alterna texto e mapa", () => expect(matchShortcut(k("M", { meta: true, shift: true }), true)).toBe("toggleMap"));
   it("Esc fecha painéis", () => expect(matchShortcut(k("Escape"), true)).toBe("close"));
   it("Ctrl+S no Mac não é atalho", () => expect(matchShortcut(k("s", { ctrl: true }), true)).toBeNull());
   it("letra sem modificador não é atalho", () => expect(matchShortcut(k("s"), true)).toBeNull());
@@ -39,5 +40,14 @@ describe("label", () => {
   });
   it("toda ação tem descrição em português", () => {
     for (const s of SHORTCUTS) expect(s.description.length).toBeGreaterThan(3);
+  });
+});
+
+describe("toggleMap", () => {
+  it("toggleMap is mod+shift+m and does not clash", () => {
+    const combo = (x: (typeof SHORTCUTS)[number]) => `${x.key.toLowerCase()}|${x.mod}|${!!x.shift}|${!!x.alt}`;
+    const map = SHORTCUTS.find((x) => x.action === "toggleMap")!;
+    expect(combo(map)).toBe("m|true|true|false");
+    expect(SHORTCUTS.filter((x) => combo(x) === combo(map))).toHaveLength(1);
   });
 });

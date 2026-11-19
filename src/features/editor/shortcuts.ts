@@ -6,6 +6,7 @@ export type Action =
   | "nextScene"
   | "prevScene"
   | "toggleSidebar"
+  | "toggleMap"
   | "toggleFocus"
   | "toggleTheme"
   | "versions"
@@ -35,6 +36,7 @@ export const SHORTCUTS: Shortcut[] = [
   { action: "nextScene", key: "ArrowDown", mod: true, alt: true, description: "Próxima cena", group: "Navegar" },
   { action: "prevScene", key: "ArrowUp", mod: true, alt: true, description: "Cena anterior", group: "Navegar" },
   { action: "toggleSidebar", key: "\\", mod: true, description: "Mostrar ou esconder o sumário", group: "Navegar" },
+  { action: "toggleMap", key: "m", mod: true, shift: true, description: "Alternar entre texto e mapa de ideias", group: "Navegar" },
   { action: "toggleFocus", key: "f", mod: true, shift: true, description: "Modo foco", group: "Aparência" },
   { action: "toggleTheme", key: "l", mod: true, shift: true, description: "Papel claro ou escuro", group: "Aparência" },
   { action: "assistant", key: "j", mod: true, description: "Assistente de IA", group: "Painéis" },

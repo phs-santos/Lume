@@ -45,7 +45,8 @@ function newConversation() {
   });
 }
 const toggleTab = () => (tab.value = tab.value === "chat" ? "bible" : "chat");
-defineExpose({ focusInput, newConversation, toggleTab });
+const bible = ref<{ reload: () => Promise<void> } | null>(null);
+defineExpose({ focusInput, newConversation, toggleTab, reloadBible: () => bible.value?.reload() });
 
 const tab = ref<"chat" | "bible">("chat");
 // uma ideia mandada para a conversa abre a aba Conversa, mesmo se a Bíblia estava aberta
@@ -175,7 +176,7 @@ function cancelReading() {
       @proposal-as-scene="emit('proposalAsScene', $event)"
       @discard-proposal="emit('discardProposal', $event)"
     />
-    <BibleView v-if="tab === 'bible'" :book-id="bookId" :scene-titles="sceneTitles" @open-scene="emit('openScene', $event)" />
+    <BibleView v-if="tab === 'bible'" ref="bible" :book-id="bookId" :scene-titles="sceneTitles" @open-scene="emit('openScene', $event)" />
   </aside>
 </template>
 

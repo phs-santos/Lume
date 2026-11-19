@@ -9,9 +9,11 @@ import { toPdf } from "../../lib/export/pdf";
 import { toEpub } from "../../lib/export/epub";
 import { generateCover } from "../book/cover";
 import type { ExportBook } from "../../lib/export/types";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { aiSceneTouched, bookSetMode, proposalSetStatus, bookOutline, chapterCreate, inboxList, inboxTranscribePending, remoteStatus, remoteSync, sceneCreate, sceneGet, sceneRestore, sceneSave, sceneVersions, settingGet, settingSet } from "../../lib/api";
 import AssistantPanel from "../assistant/AssistantPanel.vue";
+// o mapa (e a biblioteca de mapas) só carrega quando a aba Mapa abre
+const MapView = defineAsyncComponent(() => import("../map/MapView.vue"));
 import { errorMessage } from "../../lib/errors";
 import { countWords } from "../../lib/wordcount";
 import type { AiMode, Outline as OutlineT, Proposal, Scene, Version } from "../../lib/types";
@@ -31,7 +33,23 @@ import { useAutosave } from "./useAutosave";
 import { clearImageUrls } from "./imageUrl";
 import { handleCloseRequest, registerFlusher } from "./exitGuard";
 
-const props = defineProps<{ bookId: string }>();
+const props = defineProps<{ bookId: string; initialView?: "texto" | "mapa"; idea?: string }>();
+/** O que ocupa o meio: a folha ou o mapa de ideias. */
+const view = ref<"texto" | "mapa">(props.initialView ?? "texto");
+const mapView = ref<{ reload: () => Promise<void>; focusCards: (ids: string[]) => Promise<void> } | null>(null);
+/** A IA pôs cartões no mapa: mostra o mapa já enquadrando os novos. */
+async function showNewCards(ids: string[]) {
+  setView("mapa");
+  // o componente do mapa carrega sob demanda: espera ele existir
+  if (!mapView.value) await new Promise<void>((done) => { const stop = watch(mapView, (m) => m && (stop(), done())); });
+  await mapView.value?.reload();
+  await mapView.value?.focusCards(ids);
+}
+function setView(v: "texto" | "mapa") {
+  if (v === view.value) return;
+  if (v === "mapa") void flushSafely();
+  view.value = v;
+}
 const emit = defineEmits<{ close: [] }>();
 
 const outline = ref<OutlineT | null>(null);
@@ -49,7 +67,7 @@ async function setAssistant(open: boolean) {
 }
 const toggleAssistant = () => setAssistant(!assistant.value);
 
-const assistantPanel = ref<{ focusInput: () => void; newConversation: () => void; toggleTab: () => void; $el: HTMLElement } | null>(null);
+const assistantPanel = ref<{ focusInput: () => void; newConversation: () => void; toggleTab: () => void; reloadBible: () => Promise<void> | undefined; $el: HTMLElement } | null>(null);
 
 /** Atalhos do assistente: abrem o painel se estiver fechado. */
 async function withAssistant(f: (p: NonNullable<typeof assistantPanel.value>) => void) {
@@ -422,6 +440,7 @@ async function run(action: Action) {
       case "nextScene": await stepScene(1); break;
       case "prevScene": await stepScene(-1); break;
       case "toggleSidebar": sidebar.value = !sidebar.value; break;
+      case "toggleMap": setView(view.value === "mapa" ? "texto" : "mapa"); break;
       case "toggleFocus": await setPref("focus", prefs.focus === "on" ? "off" : "on"); break;
       case "toggleTheme": await setPref("theme", prefs.theme === "escuro" ? "papel" : "escuro"); break;
       case "versions": await togglePanel("versions"); break;
@@ -512,6 +531,10 @@ onBeforeUnmount(() => {
           <IconLayoutSidebarLeftCollapse v-if="sidebar" :size="18" stroke-width="1.75" />
           <IconLayoutSidebarLeftExpand v-else :size="18" stroke-width="1.75" />
         </button>
+        <div class="view-switch" role="tablist" aria-label="O que mostrar">
+          <button role="tab" :aria-selected="view === 'texto'" :title="`Texto (${hint('toggleMap')})`" @click="setView('texto')">Texto</button>
+          <button role="tab" :aria-selected="view === 'mapa'" :title="`Mapa de ideias (${hint('toggleMap')})`" @click="setView('mapa')">Mapa</button>
+        </div>
         <span class="spacer" />
         <span class="status" :class="saveState" role="status">
           <span class="dot" />{{ saveState === "erro" ? "Não salvo" : saveState === "salvando" ? "Salvando…" : "Salvo" }}
@@ -520,9 +543,9 @@ onBeforeUnmount(() => {
           <button :class="['link', 'icon', { on: panel === 'ideas' }]" :title="`Ideias que chegaram do celular (${hint('ideas')})`" aria-label="Ideias" @click="togglePanel('ideas')">
             <IconBulb :size="18" stroke-width="1.75" /><span class="lbl">Ideias</span><span v-if="newIdeas" class="badge">{{ newIdeas }}</span>
           </button>
-          <button class="link icon" title="Inserir imagem no texto (ou cole/arraste na folha)" aria-label="Imagem" @click="pickImage"><IconPhoto :size="18" stroke-width="1.75" /><span class="lbl">Imagem</span></button>
+          <button class="link icon" title="Inserir imagem no texto (ou cole/arraste na folha)" aria-label="Imagem" :disabled="view === 'mapa'" @click="pickImage"><IconPhoto :size="18" stroke-width="1.75" /><span class="lbl">Imagem</span></button>
           <input ref="imagePicker" type="file" accept="image/*" multiple hidden @change="onPicked" />
-          <button :class="['link', 'icon', { on: panel === 'versions' }]" :title="`Versões salvas desta cena (${hint('versions')})`" aria-label="Versões" @click="showVersions"><IconHistory :size="18" stroke-width="1.75" /><span class="lbl">Versões</span></button>
+          <button :class="['link', 'icon', { on: panel === 'versions' }]" :title="`Versões salvas desta cena (${hint('versions')})`" aria-label="Versões" :disabled="view === 'mapa'" @click="showVersions"><IconHistory :size="18" stroke-width="1.75" /><span class="lbl">Versões</span></button>
           <button :class="['link', 'icon', { on: panel === 'export' }]" :title="`Exportar (${hint('export')})`" aria-label="Exportar" @click="panel = panel === 'export' ? 'none' : 'export'"><IconDownload :size="18" stroke-width="1.75" /><span class="lbl">Exportar</span></button>
           <button :class="['link', 'icon', { on: panel === 'settings' }]" :title="`Ajustes (${hint('settings')})`" aria-label="Ajustes" @click="panel = panel === 'settings' ? 'none' : 'settings'"><IconAdjustmentsHorizontal :size="18" stroke-width="1.75" /><span class="lbl">Ajustes</span></button>
           <button :class="['link', 'icon', { on: panel === 'help' }]" :title="`Ajuda e atalhos (${hint('help')})`" aria-label="Ajuda" @click="panel = panel === 'help' ? 'none' : 'help'"><IconHelpCircle :size="18" stroke-width="1.75" /><span class="lbl">Ajuda</span></button>
@@ -542,8 +565,10 @@ onBeforeUnmount(() => {
     <main class="desk">
       <p v-if="error" class="error banner" role="alert">{{ error }}</p>
 
+      <MapView v-if="view === 'mapa'" ref="mapView" :book-id="bookId" @bible-changed="assistantPanel?.reloadBible()" />
       <Typewriter
         v-if="scene"
+        v-show="view === 'texto'"
         ref="typewriter"
         :key="`${scene.id}-${editorKey}`"
         :scene-id="scene.id"
@@ -556,7 +581,7 @@ onBeforeUnmount(() => {
         @change="onChange"
         @image-files="addImages"
       />
-      <p v-else-if="outline" class="empty">Crie uma cena no sumário para começar.</p>
+      <p v-else-if="outline && view === 'texto'" class="empty">Crie uma cena no sumário para começar.</p>
 
       <SettingsPanel v-if="panel === 'settings'" :mode="outline?.book.ai_mode ?? null" @set-mode="setMode" @close="panel = 'none'" />
       <BookSheet v-if="bookSheet && outline" :book-id="bookId" :title="outline.book.title" :color="coverColor(bookId)" @close="bookSheet = false" />
@@ -617,6 +642,8 @@ onBeforeUnmount(() => {
       @insert-proposal="insertProposal"
       @proposal-as-scene="proposalAsScene"
       @discard-proposal="discardProposal"
+      @map-changed="showNewCards"
+      @book-renamed="reloadOutline"
     />
   </div>
 </template>
@@ -671,6 +698,11 @@ onBeforeUnmount(() => {
 /* pouco espaço: só os ícones (o nome continua na dica) */
 @container (max-width: 44rem) { .lbl { display: none; } }
 .spacer { flex: 1; }
+.view-switch { display: flex; margin-left: 0.4rem; padding: 2px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); }
+.view-switch button { padding: 0.2rem 0.75rem; border: 0; border-radius: 6px; background: none; color: #aeb3bc; font-size: 0.8rem; cursor: pointer; }
+.view-switch button:hover { color: #fff; }
+.view-switch button[aria-selected="true"] { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.bar .link:disabled { opacity: 0.4; cursor: default; background: none; }
 .badge {
   min-width: 1.15rem;
   height: 1.15rem;

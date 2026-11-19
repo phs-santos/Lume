@@ -1,15 +1,12 @@
-## O que tem no Lume VERSION
+## O que mudou na VERSION
 
-Uma máquina de escrever para livros, com tudo guardado cifrado no seu computador.
-
-- **Escrever sem distração:** a linha em que você escreve fica sempre no mesmo lugar da tela, como no rolo de uma máquina de escrever. O texto salva sozinho a cada pausa, e cada cena guarda as versões antigas para voltar quando quiser.
-- **Livro em capítulos e cenas:** o sumário à esquerda mostra o livro. O ⋯ de cada linha (ou o clique direito) cria uma cena antes ou depois, renomeia ou apaga; arrastar muda a ordem.
-- **Imagens no texto:** cole ou arraste uma imagem para dentro da cena, com legenda.
-- **Ficha do livro:** autor, sinopse, dedicatória e capa (a sua ou uma gerada pelo Lume).
-- **Exportar:** EPUB com capa, sumário, imagens e contracapa; Word, PDF e Markdown, do livro inteiro ou só da cena aberta.
-- **Assistente de IA (opcional):** conversa sobre o livro sem perder o fio, e a Bíblia guarda personagens, lugares e fatos que a IA encontra no texto. Dois modos: Conselheira (só opina) e Coautora (propõe trechos, que só entram se você aprovar). Mostra o custo de cada resposta e aceita um limite de gasto por mês. Precisa de uma chave da Inworld; sem ela, o resto funciona normalmente.
-- **Ideias do celular:** anote ou grave áudios no celular e eles chegam aqui; os áudios viram texto. Um QR code abre o Lume no celular já com o seu nome.
-- **Seu texto é só seu:** cofre cifrado, vários usuários no mesmo computador e 24 palavras de recuperação em português caso a senha seja esquecida.
+- **Mapa de ideias:** cada livro ganhou um mapa de cartões ligados por setas, para organizar personagens, cenas e viradas antes de escrever. Dois cliques criam um cartão, já pronto para digitar; puxar a bolinha de um cartão até outro cria uma seta, que pode ter um rótulo. Os cartões têm cinco cores e podem virar ficha de personagem, lugar ou fato na Bíblia.
+- **Texto ou mapa:** no editor, a aba Texto | Mapa troca entre a folha e o mapa do livro. O atalho é Ctrl+Shift+M (Cmd+Shift+M no Mac).
+- **Começar pela ideia:** ao criar um livro, escolha entre escrever direto ou contar a ideia para a IA. Ela faz uma pergunta por vez sobre a história e vai montando o mapa com você, sem escrever o livro por você. Precisa da IA configurada.
+- **Nome provisório:** dá para criar um livro sem nome. Ele aparece como "Livro sem nome", com a marca de nome provisório na estante, até você dar um nome ou aceitar um sugerido.
+- **A IA sugere, você decide:** na conversa, a IA pode sugerir cartões e setas para o mapa e, ao desenvolver a ideia, um nome para o livro. Você vê cada cartão e cada ligação, escolhe quais entram com "Pôr no mapa" ou descarta tudo. Nada muda no mapa ou no nome sem a sua aprovação.
+- **Instalar no Mac pelo Terminal:** o comando de instalação agora funciona direto, sem precisar de conta no GitHub.
+- **Correções:** um livro recém-criado não pede mais para a IA ler cenas que ainda estão vazias.
 
 ## Baixar
 

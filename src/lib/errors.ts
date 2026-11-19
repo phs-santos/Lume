@@ -25,6 +25,10 @@ export function errorMessage(e: unknown): string {
   if (s === "EMPTY_EPUB") return "Não encontrei texto de capítulos nesse EPUB.";
   if (s.startsWith("UNDECRYPTABLE"))
     return "Algumas ideias foram cifradas para outra chave e não podem ser abertas aqui. No celular, saia e entre de novo.";
+  if (s.startsWith("INVALID: ")) {
+    const m = s.slice(9).trim();
+    return `${m.charAt(0).toUpperCase()}${m.slice(1)}${/[.!?]$/.test(m) ? "" : "."}`;
+  }
   if (s.startsWith("SYNC_PARTIAL")) return "Algumas ideias não chegaram. Vou tentar de novo daqui a pouco.";
   return (messages as Record<string, string>)[s] ?? (/^[A-ZÁ-Ú]/.test(s) && !s.includes("_") ? s : `Algo deu errado: ${s}`);
 }

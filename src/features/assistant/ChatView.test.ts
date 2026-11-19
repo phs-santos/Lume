@@ -19,6 +19,10 @@ vi.mock("../../lib/api", () => ({
   aiConversationRename: vi.fn(async () => {}),
   aiConversationDelete: vi.fn(async () => {}),
   proposalsPending: vi.fn(async () => []),
+  mapProposalsPending: vi.fn(async () => []),
+  mapProposalAccept: vi.fn(async () => []),
+  mapProposalDiscard: vi.fn(async () => {}),
+  aiConversationNewIdea: vi.fn(async () => ({ conversation: { ...conv("cvi", "Desenvolvendo a ideia"), purpose: "ideia" }, messages: [] })),
   aiRetry: vi.fn(),
 }));
 import * as api from "../../lib/api";
@@ -229,5 +233,35 @@ describe("ChatView", () => {
     (el.querySelector('[data-test="p-cursor"]') as HTMLButtonElement).click();
     await flush();
     expect(got[0][1]).toBe("cursor");
+  });
+
+  it("map_proposal event shows block in conselheira", async () => {
+    vi.mocked(api.aiSend).mockImplementationOnce(async (_b, _s, _t, on) => {
+      on({ type: "map_proposal", proposal: { id: "mp", book_id: "b", conversation_id: "cv", kind: "cartoes", status: "pendente", created_at: 0, payload_json: JSON.stringify({ cartoes: [{ ref: "a", texto: "Marina" }], setas: [] }) } });
+      on({ type: "done", message_id: "m", input_tokens: 1, output_tokens: 1, cost: null });
+    });
+    const el = await mount("conselheira");
+    await type(el, "organiza o mapa");
+    expect(el.textContent).toContain("A IA sugere 1 cartão para o mapa");
+  });
+
+  it("pending map proposals come back when opening", async () => {
+    vi.mocked(api.mapProposalsPending).mockResolvedValueOnce([{ id: "n", book_id: "b", conversation_id: "cv", kind: "nome", status: "pendente", created_at: 0, payload_json: JSON.stringify({ nome: "O Farol" }) }]);
+    const el = await mount("conselheira");
+    expect(el.textContent).toContain("Usar “O Farol” como nome do livro?");
+  });
+
+  it("startIdea opens idea conversation and sends the idea", async () => {
+    vi.mocked(api.aiSend).mockImplementationOnce(async () => {});
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    app = createApp(ChatView, { bookId: "b", sceneId: null, mode: "conselheira" });
+    const vm = app.mount(el) as unknown as { startIdea: (t: string) => Promise<void> };
+    await flush();
+    await vm.startIdea("Uma faroleira que recebe cartas");
+    await flush();
+    expect(api.aiConversationNewIdea).toHaveBeenCalledWith("b");
+    expect(api.aiSend).toHaveBeenCalledWith("b", null, "Uma faroleira que recebe cartas", expect.any(Function));
+    expect(bubbles(el)).toContain("Uma faroleira que recebe cartas");
   });
 });

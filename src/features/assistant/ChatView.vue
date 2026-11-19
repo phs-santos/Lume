@@ -3,10 +3,12 @@ import { nextTick, onMounted, ref, watch } from "vue";
 import { IconArrowUp, IconMessages, IconPencil, IconPlus, IconRefresh, IconSearch, IconTrash } from "@tabler/icons-vue";
 import {
   aiConversation, aiConversationDelete, aiConversationNew, aiConversationOpen, aiConversationRename, aiConversations, aiKeySet, aiKeyStatus, aiRetry, aiSend, proposalsPending,
+  aiConversationNewIdea, mapProposalsPending,
 } from "../../lib/api";
+import MapProposalCard from "./MapProposalCard.vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { errorMessage } from "../../lib/errors";
-import type { ChatEvent, Conversation, Proposal } from "../../lib/types";
+import type { ChatEvent, Conversation, MapCard, MapProposal, Proposal } from "../../lib/types";
 
 const props = defineProps<{ bookId: string; sceneId: string | null; mode: string; sceneTitles?: Record<string, string>; draft?: string }>();
 const emit = defineEmits<{
@@ -14,6 +16,8 @@ const emit = defineEmits<{
   proposalAsScene: [p: Proposal];
   discardProposal: [p: Proposal];
   draftUsed: [];
+  mapChanged: [cardIds: string[]];
+  bookRenamed: [];
 }>();
 
 /** Perguntas prontas para quem não sabe por onde começar. */
@@ -26,7 +30,8 @@ type Item =
   | { kind: "user"; id: string; text: string }
   | { kind: "assistant"; id: string; text: string; meta?: string }
   | { kind: "note"; id: string; text: string }
-  | { kind: "proposal"; id: string; proposal: Proposal };
+  | { kind: "proposal"; id: string; proposal: Proposal }
+  | { kind: "map_proposal"; id: string; proposal: MapProposal };
 
 const hasKey = ref<boolean | null>(null);
 const keyDraft = ref("");
@@ -81,6 +86,7 @@ onMounted(async () => {
     // propostas ainda sem decisão continuam esperando, mesmo depois de fechar o app
     if (props.mode === "coautora")
       for (const p of await proposalsPending(props.bookId)) items.value.push({ kind: "proposal", id: p.id, proposal: p });
+    for (const p of await mapProposalsPending(props.bookId)) items.value.push({ kind: "map_proposal", id: p.id, proposal: p });
   } catch (e) {
     error.value = errorMessage(e);
   }
@@ -114,6 +120,9 @@ function handler() {
       bubbleId = null; // texto depois da consulta vai numa bolha nova
     } else if (e.type === "proposal") {
       if (props.mode === "coautora") items.value.push({ kind: "proposal", id: e.proposal.id, proposal: e.proposal });
+    } else if (e.type === "map_proposal") {
+      items.value.push({ kind: "map_proposal", id: e.proposal.id, proposal: e.proposal });
+      bubbleId = null; // o que vier depois vai numa bolha nova, abaixo do bloco
     } else if (e.type === "done") {
       // as bolhas desta resposta já estão salvas: não são mais "provisórias"
       const created = new Set(mine);
@@ -222,10 +231,32 @@ function resolveProposal(p: Proposal, action: "insert" | "cursor" | "scene" | "d
   else emit("discardProposal", p);
 }
 
+const dropItem = (id: string) => (items.value = items.value.filter((i) => i.id !== id));
+function cardsAccepted(id: string, cards: MapCard[]) {
+  dropItem(id);
+  emit("mapChanged", cards.map((c) => c.id));
+}
+function renamed(id: string) {
+  dropItem(id);
+  emit("bookRenamed");
+}
+
+/** Começa a conversa de desenvolver a ideia do livro, com o texto da pessoa como primeira mensagem. */
+async function startIdea(text: string) {
+  showHistory.value = false;
+  try {
+    load(await aiConversationNewIdea(props.bookId));
+  } catch (e) {
+    error.value = errorMessage(e);
+    return;
+  }
+  await send(text);
+}
+
 const KEY_HELP = "https://platform.inworld.ai/";
 const openKeyHelp = () => void openUrl(KEY_HELP).catch(() => window.open(KEY_HELP, "_blank"));
 
-defineExpose({ focusInput: () => input.value?.focus(), newConversation: () => (busy.value ? Promise.resolve() : newConversation()), addProposals: (ps: Proposal[]) => ps.forEach((p) => items.value.push({ kind: "proposal", id: p.id, proposal: p })) });
+defineExpose({ startIdea, focusInput: () => input.value?.focus(), newConversation: () => (busy.value ? Promise.resolve() : newConversation()), addProposals: (ps: Proposal[]) => ps.forEach((p) => items.value.push({ kind: "proposal", id: p.id, proposal: p })) });
 </script>
 
 <template>
@@ -295,6 +326,13 @@ defineExpose({ focusInput: () => input.value?.focus(), newConversation: () => (b
               <button class="link" data-test="p-discard" @click="resolveProposal(it.proposal, 'discard')">Descartar</button>
             </div>
           </div>
+          <MapProposalCard
+            v-else-if="it.kind === 'map_proposal'"
+            :proposal="it.proposal"
+            @accepted="cardsAccepted(it.id, $event)"
+            @renamed="renamed(it.id)"
+            @discarded="dropItem(it.id)"
+          />
           <template v-else>
             <div :class="['msg', it.kind]">{{ it.text }}</div>
             <p v-if="it.kind === 'assistant' && it.meta" class="meta" data-test="meta">{{ it.meta }}</p>

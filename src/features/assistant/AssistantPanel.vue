@@ -16,6 +16,8 @@ const emit = defineEmits<{
   discardProposal: [p: Proposal];
   draftUsed: [];
   setMode: [m: AiMode];
+  mapChanged: [cardIds: string[]];
+  bookRenamed: [];
 }>();
 
 const MODES: { id: AiMode; name: string; desc: string }[] = [
@@ -31,7 +33,7 @@ function chooseMode(m: AiMode) {
   emit("setMode", m);
 }
 
-const chat = ref<{ focusInput: () => void; newConversation: () => Promise<void> } | null>(null);
+const chat = ref<{ focusInput: () => void; newConversation: () => Promise<void>; startIdea: (t: string) => Promise<void> } | null>(null);
 /** Usado pelo ⌘J: mostra a conversa e põe o cursor no campo de mensagem. */
 function focusInput() {
   tab.value = "chat";
@@ -46,7 +48,13 @@ function newConversation() {
 }
 const toggleTab = () => (tab.value = tab.value === "chat" ? "bible" : "chat");
 const bible = ref<{ reload: () => Promise<void> } | null>(null);
-defineExpose({ focusInput, newConversation, toggleTab, reloadBible: () => bible.value?.reload() });
+/** Abre a conversa de desenvolver a ideia (livro criado pela opção "Tenho uma ideia"). */
+async function startIdea(text: string) {
+  tab.value = "chat";
+  await nextTick();
+  await chat.value?.startIdea(text);
+}
+defineExpose({ focusInput, newConversation, toggleTab, startIdea, reloadBible: () => bible.value?.reload() });
 
 const tab = ref<"chat" | "bible">("chat");
 // uma ideia mandada para a conversa abre a aba Conversa, mesmo se a Bíblia estava aberta
@@ -175,6 +183,8 @@ function cancelReading() {
       @insert-proposal="(p, where) => emit('insertProposal', p, where)"
       @proposal-as-scene="emit('proposalAsScene', $event)"
       @discard-proposal="emit('discardProposal', $event)"
+      @map-changed="emit('mapChanged', $event)"
+      @book-renamed="emit('bookRenamed')"
     />
     <BibleView v-if="tab === 'bible'" ref="bible" :book-id="bookId" :scene-titles="sceneTitles" @open-scene="emit('openScene', $event)" />
   </aside>
